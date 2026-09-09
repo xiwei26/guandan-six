@@ -1,0 +1,12 @@
+node_modules/
+.npm-cache/
+dist/
+.env
+.env.*
+!.env.example
+data/
+output/
+*.log
+test-out.txt
+project.private.config.json
+.DS_Store
