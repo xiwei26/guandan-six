@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:game": "tsx scripts/sync-shared.ts && tsc -p game-src/tsconfig.json && tsx scripts/build-game.ts",
+    "check:game": "tsx --test tests/minigame.test.ts",
     "dev": "concurrently -k \"tsx watch server/index.ts\" \"vite --host 0.0.0.0\"",
     "dev:server": "tsx watch server/index.ts",
     "dev:web": "vite --host 0.0.0.0",
@@ -22,6 +24,7 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "esbuild": "0.28.2",
     "@types/node": "^24.0.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",

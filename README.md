@@ -1,6 +1,27 @@
 # 六人掼蛋
 
-按《六人掼蛋小程序 PRD v1.0》开发的 **规则验证器、Web 原型与微信原生小程序页面**。六人、三副牌、每人 27 张、隔位组队。当前交付支持本机或局域网验证完整牌局；小程序使用原生 WXML/WXSS/TypeScript，正式发布仍需微信账号、合法域名与后端部署配置。
+按《六人掼蛋小程序 PRD v1.0》开发，发布目标现已调整为 **微信小游戏**。六人、三副牌、每人 27 张、隔位组队。根工程使用 `compileType: game`，入口为 `minigame/game.js`，以横屏 Canvas 绘制大厅和牌桌。保留 Web 原型与旧小程序页面作为参考；正式发布仍需真实小游戏账号验收、合法域名与后端部署。
+
+## 微信小游戏（当前发布目标）
+
+```bash
+npm install
+npm run build:game
+npm run check:game
+npm run dev:server
+```
+
+若本机 npm 启动器损坏，可将命令中的 `npm` 换为 `corepack npm`。微信开发者工具导入项目根目录 `E:/learning/guandan-six`，选择小游戏，确认 AppID 为你有权限的小游戏账号。已有工程需关闭后重新打开以读取新的 `miniprogramRoot: minigame/`。现在提供真正的 `game.js` 与 `game.json`，不再使用 WXML 或 Page 作为小游戏入口。
+
+`game-src/` 是手写 TypeScript 源码，`npm run build:game` 类型检查后将客户端、请求连接封装和共享规则打包为单文件 `minigame/game.js`。构建产物随 Git 提交，克隆后可直接导入；修改源码后必须重新构建。后端仍是独立的 Node.js 服务，不能随小游戏客户端上传到微信。
+
+小游戏提供微信/游客登录、昵称与服务地址输入、建房及配置、六位房号加入、分享 query 邀请、上次房间恢复、五机器人体验局；横屏牌桌支持六席隔位组队、准备/开局/换座、两排手牌点选和滑选、排序/清空/提示/出牌/不出、托管、记牌器、贡还贡、排名结算及续局。规则和战绩以可翻页面板展示。隐藏时关闭 socket 与计时器，返回前台重新获取快照；Canvas 按屏幕安全区域缩放，避免刘海区域遮挡。
+
+开发工具本机后端默认 `http://127.0.0.1:3001`；真机在大厅「连接设置」输入可访问的局域网开发地址或已部署 HTTPS 域名。微信登录的 `WECHAT_APPID` 必须匹配小游戏 AppID，密钥只放后端环境变量。游客身份与房间仍按服务地址隔离。
+
+验证包含独立小游戏打包、无 DOM / Page / App 环境启动、分享入房、准备、提示出牌、触点换算和前后台恢复。Canvas 模拟测试不等于微信模拟器或真机验收；真实微信登录、分享接收、公网重连、平台审核及发布资格尚未验收。工程入口参考 [微信官方小游戏示例](https://github.com/wechat-miniprogram/minigame-demo)。
+
+2026-09-10 验证：全项目 45 项测试通过，其中 6 项验证小游戏构建产物、无 DOM 启动、邀请入房、准备、滑选/提示/出牌、前后台恢复、安全区坐标、还贡选择、结算续局和房间开关。小游戏打包、Web 生产构建和旧小程序编译均通过。使用浏览器 Canvas 适配层连本地真实后端，检查了游客大厅、体验局六席及 27 张手牌；该适配层仅作本地验收，不包含在小游戏包中。牌桌右上角预留微信原生胶囊菜单空间。
 
 ## 运行
 
@@ -107,9 +128,9 @@ npm run simulate -- --deals 100000 --games 500
 
 技术参考：[Vite 文档](https://vite.dev/guide/)、[ws 官方仓库](https://github.com/websockets/ws)、[Node.js Crypto](https://nodejs.org/api/crypto.html)。
 
-## 微信小程序开发
+## 旧微信小程序页面（保留参考）
 
-在微信开发者工具中导入本项目根目录，使用自己的小程序 AppID（当前 project.config.json 中已有项目 AppID，请确认账号权限）。工具按 miniprogramRoot 加载 miniprogram/，并使用 TypeScript 编译插件。无需把 Web 页面放入 web-view。
+以下为旧小程序客户端说明，不是当前小游戏的导入方式。根工程已经切到小游戏；旧页面保留在 `miniprogram/`，供回归测试和复用请求、规则展示逻辑。若单独运行旧客户端，需要另建小程序工程配置，指定 `miniprogram/`、小程序 AppID 和 TypeScript 编译插件。
 
 ```bash
 npm install

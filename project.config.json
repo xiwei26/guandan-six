@@ -1,5 +1,5 @@
 {
-  "miniprogramRoot": "miniprogram/",
+  "miniprogramRoot": "minigame/",
   "setting": {
     "es6": true,
     "postcss": true,
@@ -12,9 +12,9 @@
       "disablePlugins": [],
       "outputPath": ""
     },
-    "useCompilerPlugins": ["typescript"]
+    "useCompilerPlugins": false
   },
-  "compileType": "miniprogram",
+  "compileType": "game",
   "simulatorPluginLibVersion": {},
   "packOptions": {
     "ignore": [],
