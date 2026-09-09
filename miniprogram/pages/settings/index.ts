@@ -1,0 +1,4 @@
+import {client,errorMessage,normalizeServer} from '../../services/client';
+Page({data:{server:'',error:'',message:'',busy:false},onShow(){this.setData({server:client().server()});},input(e:WechatMiniprogram.Input){this.setData({server:e.detail.value,error:'',message:''});},
+save(){try{const value=normalizeServer(this.data.server,wx.getAccountInfoSync().miniProgram.envVersion==='develop');if(value===client().server()){this.setData({message:'当前已使用此地址'});return;}wx.showModal({title:'切换连接地址？',content:'切换后使用新服务的登录身份和战绩。原服务的身份与房间记录会保留，切回后可恢复。',success:r=>{if(r.confirm){client().setServer(value);wx.reLaunch({url:'/pages/home/index'});}}});}catch(e){this.setData({error:errorMessage(e)});}},
+async test(){if(this.data.busy)return;this.setData({busy:true,error:'',message:''});try{await client().request('/api/health',undefined,true);this.setData({message:'当前已保存的服务连接正常'});}catch(e){this.setData({error:errorMessage(e)});}finally{this.setData({busy:false});}}});

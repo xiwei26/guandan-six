@@ -1,0 +1,29 @@
+<view class="page home-page">
+  <view class="top-links"><text bindtap="navigate" data-page="rules">玩法说明</text><text bindtap="navigate" data-page="history">我的战绩</text><text bindtap="navigate" data-page="settings">连接设置</text></view>
+  <view class="eyebrow">六人 · 三副牌 · 3V3</view>
+  <view class="hero-title">三人一队，<view>六人开掼<text class="accent">。</text></view></view>
+  <view class="hero-copy">熟悉的掼蛋，多两份默契。<view>约上五位好友，这一局，谁也不用旁观。</view></view>
+  <view wx:if="{{invited}}" class="invite-banner">好友邀请你加入房间 {{code}}，{{loggedIn?'确认后即可入座':'登录后即可入座'}}。</view>
+  <view class="identity">
+    <text class="label">{{loggedIn?'本次使用的昵称':'先取个牌桌上的名字'}}</text>
+    <view class="nickname-line"><text class="initial">{{nickname?nickname[0]:'你'}}</text><input type="nickname" maxlength="20" value="{{nickname}}" placeholder="输入昵称" disabled="{{loggedIn || busy}}" bindinput="inputNickname"/><text class="muted">{{loggedIn?provider:'新牌友'}}</text></view>
+  </view>
+  <view wx:if="{{!loggedIn}}" class="login-actions"><button class="primary" data-kind="wechat" bindtap="login" loading="{{busy}}" disabled="{{busy || !nickname}}">微信登录</button><button class="secondary" data-kind="guest" bindtap="login" disabled="{{busy || !nickname}}">游客进入</button><text class="hint">游客数据保存在当前设备，微信登录需服务端完成配置。</text></view>
+  <view wx:else>
+    <view class="button-row"><button class="primary" bindtap="openCreate" disabled="{{busy}}">＋ 创建房间</button><button class="secondary" bindtap="openJoin" disabled="{{busy}}">加入房间</button></view>
+    <button class="text-button demo" bindtap="enter" data-mode="demo" disabled="{{busy}}">先体验一局 <text>与 5 位体验机器人试玩</text></button>
+    <button wx:if="{{resumeId}}" class="resume" bindtap="resume" disabled="{{busy}}">↩ 返回房间 {{resumeId}}</button>
+  </view>
+  <view wx:if="{{error && !modal}}" class="error" role="alert">{{error}}</view>
+  <view class="home-rules"><view><text class="rule-icon">六</text><view><text>多两个人，多一份配合</text><view class="muted">三人组队，隔位而坐</view></view></view><view><text class="rule-icon">牌</text><view><text>三副牌，依然每人 27 张</text><view class="muted">熟悉的牌型，不变的上手方式</view></view></view><view><text class="rule-icon">升</text><view><text>一起争头游，一起升等级</text><view class="muted">前三同队，最高可升 3 级</view></view></view></view>
+  <view class="footer">三人一队 · 六人开掼 <text>规则 6P_V1</text></view>
+</view>
+<view wx:if="{{modal}}" class="overlay" catchtap="closeModal">
+  <view class="sheet" catchtap="stopTap"><view class="sheet-heading"><text>{{modal==='create'?'创建好友房':'加入好友房'}}</text><button class="close" bindtap="closeModal" disabled="{{busy}}" aria-label="关闭">×</button></view>
+    <scroll-view scroll-y class="sheet-body"><view wx:if="{{modal==='join'}}"><view class="muted">输入好友分享的 6 位房间号。</view><input class="code-input" type="number" maxlength="6" value="{{code}}" placeholder="000000" bindinput="inputCode"/></view>
+    <view wx:else><view class="field"><text>本场局数</text><picker range="{{roundOptions}}" value="{{roundIndex}}" bindchange="roundChange"><view class="picker-value">{{roundOptions[roundIndex]}} <text>⌄</text></view></picker></view><view class="field"><text>每次出牌时间</text><picker range="{{timeOptions}}" value="{{timeIndex}}" bindchange="timeChange"><view class="picker-value">{{timeOptions[timeIndex]}} <text>⌄</text></view></picker></view>
+      <view class="switch-row"><text>显示其他玩家剩余牌数</text><switch color="#163e34" checked="{{showRemaining}}" data-key="showRemaining" bindchange="switchRule"/></view><view class="switch-row"><text>允许主动托管</text><switch color="#163e34" checked="{{allowAutoPlay}}" data-key="allowAutoPlay" bindchange="switchRule"/></view><view class="switch-row"><text>允许记牌器</text><switch color="#163e34" checked="{{allowCounter}}" data-key="allowCounter" bindchange="switchRule"/></view><view class="switch-row"><text>启用抗贡规则</text><switch color="#163e34" checked="{{resistance}}" data-key="resistance" bindchange="switchRule"/></view>
+    </view><view wx:if="{{error}}" class="error">{{error}}</view></scroll-view>
+    <button class="primary" data-mode="{{modal}}" bindtap="enter" loading="{{busy}}" disabled="{{busy || (modal==='join' && code.length!==6)}}">{{modal==='create'?'创建并入座':'加入房间'}}</button>
+  </view>
+</view>

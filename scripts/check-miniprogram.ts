@@ -1,0 +1,13 @@
+import {existsSync,mkdirSync,readFileSync} from 'node:fs';
+import {resolve,join} from 'node:path';
+import {execFileSync} from 'node:child_process';
+const root=resolve('miniprogram');
+const pages=JSON.parse(readFileSync(join(root,'app.json'),'utf8')).pages as string[];
+for(const page of pages)for(const ext of ['ts','json','wxml','wxss'])if(!existsSync(join(root,page+'.'+ext)))throw new Error(`缺少页面文件 ${page}.${ext}`);
+for(const file of ['cards.ts','types.ts'])if(readFileSync(join(root,'shared',file),'utf8').split('\n').slice(1).join('\n')!==readFileSync(resolve('shared',file),'utf8'))throw new Error('共享规则未同步，请运行 npm run sync:mini');
+const bin=process.env.WECHAT_COMPILER_DIR||'C:/Program Files (x86)/Tencent/微信web开发者工具/resources/app.asar.unpacked/node_modules/wcc-exec';
+for(const tool of ['wcc.exe','wcsc.exe'])if(!existsSync(join(bin,tool)))throw new Error('找不到微信原生编译器，请设置 WECHAT_COMPILER_DIR');
+const out=resolve('output/miniprogram');mkdirSync(out,{recursive:true});
+execFileSync(join(bin,'wcc.exe'),['-o',join(out,'templates.js'),...pages.map(p=>p+'.wxml')],{cwd:root,stdio:'pipe'});
+execFileSync(join(bin,'wcsc.exe'),['-o',join(out,'styles.js'),'app.wxss',...pages.map(p=>p+'.wxss')],{cwd:root,stdio:'pipe'});
+console.log(`微信原生编译通过：${pages.length} 个 WXML 页面、${pages.length+1} 个 WXSS 样式文件`);

@@ -1,6 +1,36 @@
 {
-  "name": "guandan-six", "version": "0.1.0", "private": true, "type": "module",
-  "scripts": {"dev": "concurrently -k \"tsx watch server/index.ts\" \"vite --host 0.0.0.0\"", "dev:server": "tsx watch server/index.ts", "dev:web": "vite --host 0.0.0.0", "build": "tsc --noEmit && vite build", "start": "tsx server/index.ts", "test": "tsx --test tests/*.test.ts", "simulate": "tsx scripts/simulate.ts"},
-  "dependencies": {"react": "^19.1.1", "react-dom": "^19.1.1", "ws": "^8.18.3", "lucide-react": "^0.468.0"},
-  "devDependencies": {"@types/node": "^24.0.0", "@types/react": "^19.1.0", "@types/react-dom": "^19.1.0", "@types/ws": "^8.18.1", "@vitejs/plugin-react": "^5.0.0", "concurrently": "^9.2.0", "tsx": "^4.20.0", "typescript": "~5.9.2", "vite": "^7.1.0"}
+  "name": "guandan-six",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"tsx watch server/index.ts\" \"vite --host 0.0.0.0\"",
+    "dev:server": "tsx watch server/index.ts",
+    "dev:web": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "start": "tsx server/index.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "simulate": "tsx scripts/simulate.ts",
+    "sync:mini": "tsx scripts/sync-shared.ts",
+    "check:mini": "tsx scripts/sync-shared.ts && tsc -p miniprogram/tsconfig.json --noEmit",
+    "check:mini:native": "tsx scripts/check-miniprogram.ts"
+  },
+  "dependencies": {
+    "lucide-react": "^0.468.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.0",
+    "miniprogram-api-typings": "^5.2.3",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.2",
+    "vite": "^7.1.0"
+  }
 }

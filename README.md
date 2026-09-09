@@ -1,6 +1,6 @@
 # 六人掼蛋
 
-按《六人掼蛋小程序 PRD v1.0》开发的 **Phase 1 规则验证器 + Phase 2 Web 原型**。六人、三副牌、每人 27 张、隔位组队。当前交付用于本机或局域网验证完整牌局，尚不是可发布的微信小程序。
+按《六人掼蛋小程序 PRD v1.0》开发的 **规则验证器、Web 原型与微信原生小程序页面**。六人、三副牌、每人 27 张、隔位组队。当前交付支持本机或局域网验证完整牌局；小程序使用原生 WXML/WXSS/TypeScript，正式发布仍需微信账号、合法域名与后端部署配置。
 
 ## 运行
 
@@ -72,6 +72,9 @@ shared/types.ts       规则配置、状态模型、公开视图及操作协议
 server/game.ts        服务端对局状态机与事务式操作验证
 server/index.ts       HTTP / WebSocket、身份、持久化、战绩
 src/                  React 界面与客户端连接
+miniprogram/          原生首页、牌桌、规则、战绩、连接设置及微信请求/连接封装
+scripts/sync-shared.ts  将同一规则源同步到小程序编译根目录
+scripts/check-miniprogram.ts  微信官方 WXML/WXSS 编译与页面完整性检查
 tests/                规则、状态机、真实网络与恢复测试
 scripts/simulate.ts   随机发牌与完整牌局压力验证
 ```
@@ -94,7 +97,7 @@ npm run simulate -- --deals 100000 --games 500
 
 ## 当前边界
 
-- 原生小程序页面、微信分享卡片和真实微信授权流程尚未交付。本阶段邀请为 Web 链接，游客身份与微信身份没有绑定。现有 `project.config.json` 是微信开发者工具配置，不代表 `miniprogram/` 工程已经实现。
+- 原生页面和微信登录接口已接通，分享使用微信原生分享入口和房间邀请路径；尚未完成微信开发者工具模拟器、真实账号授权、分享接收与真机手势验收。游客身份与微信身份没有绑定。
 - 后端使用 Node.js + TypeScript + `ws`，前端使用 React + Vite；尚未引入 PRD 建议的 NestJS、PostgreSQL、Redis。JSON 存档用于单进程开发，不能支持多实例并发写入。
 - 尚未验证 100 房间 / 600 人并发、跨公网延迟、3 秒恢复 SLA 或真机小程序性能；房间容量上限不是负载测试结论。
 - 暂无语音、商城、排位、充值或高级 AI。页面视觉以可操作组件为准，图片概念生成服务网络失败，因此使用代码绘制标准牌面，不依赖外部生成图片。
@@ -103,3 +106,32 @@ npm run simulate -- --deals 100000 --games 500
 微信服务端预接入需通过环境变量设置 `WECHAT_APPID` 和 `WECHAT_SECRET`，不要提交密钥。未配置时接口返回 501；Web 客户端仍使用游客身份。历史存档可恢复已知局数和出牌统计，旧版本未记录的个人头游等明细无法补算。
 
 技术参考：[Vite 文档](https://vite.dev/guide/)、[ws 官方仓库](https://github.com/websockets/ws)、[Node.js Crypto](https://nodejs.org/api/crypto.html)。
+
+## 微信小程序开发
+
+在微信开发者工具中导入本项目根目录，使用自己的小程序 AppID（当前 project.config.json 中已有项目 AppID，请确认账号权限）。工具按 miniprogramRoot 加载 miniprogram/，并使用 TypeScript 编译插件。无需把 Web 页面放入 web-view。
+
+```bash
+npm install
+npm run check:mini
+npm run dev:server
+```
+
+首页提供微信登录、游客进入、创建房间、六位房号加入、返回房间和五机器人体验桌；牌桌提供准备、房主换座/组队、出牌/不出/提示、两排手牌滑选、排序、贡还贡、托管、记牌、结算及原生房间邀请。规则页解释 6P_V1；战绩页显示服务端统计与排名；连接设置按服务地址隔离身份和房间。服务端始终判定最终操作，不向小程序发送他人手牌。
+
+默认接口地址在 miniprogram/config.ts，为 http://127.0.0.1:3001。开发工具联调可在本地设置中关闭合法域名校验；真机开发需改为电脑局域网 IP，并确保手机可访问服务。体验版与正式版必须配置 HTTPS 请求域名和对应 WSS socket 合法域名；客户端只允许开发版使用本机或私有网段 HTTP。连接测试检查已保存地址，输入新地址后需先保存。
+
+微信登录通过 wx.login 获取临时代码，再由服务端换取身份；服务端环境变量 WECHAT_APPID 应与小程序 AppID 一致，WECHAT_SECRET 仅保存在服务端。未配置时页面展示接口错误，用户可主动选择游客进入。当前登录测试使用模拟微信接口，不代表真实账号授权已验收。
+
+共享规则只修改 shared/，运行 npm run sync:mini 更新 miniprogram/shared/，不要手工修改生成副本。小程序仅调用牌型识别、排序、提示展示；洗牌和发牌仍在服务端执行。页面隐藏时关闭连接和计时器，回到牌桌时重新获取快照并认证；过期连接事件被丢弃，动作冲突后重新同步。
+
+```bash
+npm run check:mini
+npm run check:mini:native
+npm test
+npm run build
+```
+
+原生编译检查使用微信开发者工具自带的 wcc.exe / wcsc.exe；默认从 Windows 标准安装目录读取，也可设置 WECHAT_COMPILER_DIR 指向 wcc-exec 目录。编译产物写入已忽略的 output/miniprogram/；缺少编译器会明确失败，不会跳过后声称成功。类型检查无需安装开发者工具。
+
+2026-09-09 原生页面验证：五个页面的 TypeScript、五份 WXML 与六份 WXSS 编译通过；新增身份隔离、微信代码交换与过期清理、两排行牌/座位隐私、还贡约束和过期 socket 回调测试。此验证不包含模拟器截图和真机渲染结论。

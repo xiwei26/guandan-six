@@ -1,0 +1,38 @@
+<view class="room-page">
+  <view class="room-toolbar"><text bindtap="leave">‹ 大厅</text><view class="room-title">房间 {{roomId}}<view class="connection {{connection}}">{{connectionText}}</view></view><view class="room-tools"><text bindtap="copy">复制房号</text><button open-type="share" class="text-button">邀请</button></view></view>
+  <view wx:if="{{loading}}" class="empty muted">正在连接牌桌…</view>
+  <view wx:if="{{error && !vm.ended}}" class="error">{{error}}</view>
+  <button wx:if="{{connection==='offline'}}" class="secondary reconnect" bindtap="refresh">重新连接</button>
+  <block wx:if="{{vm}}">
+    <view class="scores"><view class="A">● 蓝队 <text>{{vm.room.teamLevels.A}}</text></view><view class="round-info">{{vm.waiting?vm.room.players.length+'/6 人入座':'打 '+vm.room.currentLevel}}<view>{{vm.roundText}}{{vm.room.round?' · 第 '+vm.room.round+' 局':''}}</view></view><view class="B"><text>{{vm.room.teamLevels.B}}</text> 橙队 ●</view></view>
+    <view class="table">
+      <view class="felt"><view class="felt-ring"></view><text class="felt-logo">六人掼蛋</text></view>
+      <view wx:for="{{vm.seats}}" wx:key="seat" class="seat seat-{{item.relative}} {{item.team}} {{item.done?'finished':''}} {{swapSeat===item.seat?'chosen-seat':''}}" data-seat="{{item.seat}}" bindtap="seatTap">
+        <view class="avatar {{item.active?'active':''}} {{!item.occupied?'vacant':''}}">{{item.initial}}<text wx:if="{{item.host}}" class="crown">♛</text><view wx:if="{{item.offline}}" class="offline-dot"></view></view>
+        <view class="seat-name">{{item.nickname}}</view><view class="seat-detail {{item.low?'low':''}}">{{item.detail}}</view><view wx:if="{{item.pass}}" class="pass-label">不出</view>
+      </view>
+      <view class="table-center">
+        <view wx:if="{{vm.waiting}}"><view class="center-title">{{vm.room.players.length===6?'人已到齐，准备开掼':'等好友，一起开掼'}}</view><view class="center-hint">{{swapping?(swapSeat?'已选 '+swapSeat+' 号，再选目标座位':'点击未准备玩家，再选目标座位'):'已准备 '+vm.readyCount+' / 6'}}</view><button open-type="share" class="invite-table">邀请好友入座</button></view>
+        <view wx:elif="{{vm.tribute}}"><view class="center-title">贡还贡</view><view wx:for="{{vm.exchanges}}" wx:key="from" class="exchange-pair">{{item.fromName}} → {{item.toName}}<text>{{item.label}}</text></view></view>
+        <view wx:elif="{{vm.played.length}}"><view class="last-label">{{vm.lastLabel}}</view><view class="played-cards"><view wx:for="{{vm.played}}" wx:key="id" class="card small {{item.red?'red':''}}"><view class="card-corner"><text>{{item.label}}</text><text>{{item.symbol}}</text></view><text class="card-symbol">{{item.symbol}}</text><text wx:if="{{item.wild}}" class="wild">配</text></view></view></view>
+        <view wx:else><view class="center-title">{{vm.mine?'轮到你首出':vm.turnLabel}}</view><view class="center-hint">{{vm.room.tributeResisted?'抗贡成功':'这一手，等一份默契'}}</view></view>
+      </view>
+    </view>
+    <view class="notice">{{vm.message}}</view>
+    <view wx:if="{{vm.waiting}}" class="lobby-actions"><view class="button-row"><button class="{{vm.me.ready?'secondary':'primary'}}" bindtap="ready" disabled="{{busy || connection!=='online'}}">{{vm.me.ready?'取消准备':'我准备好了'}}</button><button wx:if="{{vm.host}}" class="primary" bindtap="start" disabled="{{!vm.allReady || busy || connection!=='online'}}">开始游戏</button></view><view wx:if="{{vm.host}}" class="host-tools"><button class="text-button" bindtap="shuffle" disabled="{{!vm.canShuffle || busy}}">随机组队</button><button class="text-button" bindtap="toggleSwap" disabled="{{busy}}">{{swapping?'结束换座':'调整座位'}}</button></view><view class="hint">六人全部准备后，由房主开始。</view></view>
+    <block wx:else>
+      <view class="turn-line"><view class="turn-text">{{vm.turnLabel}} <text>{{seconds}}{{vm.me.autoPlay?' · 托管中':''}}</text></view><button class="text-button" bindtap="auto" disabled="{{busy || vm.ended || connection!=='online' || (!vm.room.rules.allowAutoPlay && !vm.me.autoPlay)}}">{{vm.me.autoPlay?'取消托管':'托管'}}</button></view>
+      <view wx:if="{{vm.tribute}}" class="button-row"><button class="primary" bindtap="exchange" disabled="{{!vm.canTribute || busy || connection!=='online'}}">{{vm.tributeLabel}}</button></view>
+      <view wx:else class="button-row play-actions"><button class="secondary" bindtap="pass" disabled="{{!vm.canPass || busy || connection!=='online'}}">不出</button><button class="secondary" bindtap="hint" disabled="{{!vm.mine || busy || connection!=='online'}}">提示</button><button class="primary" bindtap="play" disabled="{{!vm.canPlay || busy || connection!=='online'}}">出牌 →</button></view>
+      <view class="selection-info">{{vm.selectionText}}</view>
+      <view class="hand-heading"><view>我的手牌 <text>{{vm.room.hand.length}} 张</text></view><view class="hand-tools"><text bindtap="sort">{{sortLabel}}</text><text bindtap="clear">清空</text><text wx:if="{{vm.room.rules.allowCounter}}" bindtap="toggleCounter">记牌</text></view></view>
+      <view wx:if="{{!vm.room.hand.length}}" class="hand-empty">你已出完，看看队友的配合。</view>
+      <view wx:for="{{vm.rows}}" wx:key="id" wx:for-item="row" class="hand-row"><view class="hand-track"><view wx:for="{{row.cards}}" wx:key="id" class="card hand-card {{item.red?'red':''}} {{item.selected?'selected':''}}" style="left:{{item.left}}%;" data-id="{{item.id}}" catchtouchstart="touchStart" catchtouchmove="touchMove" catchtouchend="touchEnd" catchtouchcancel="touchEnd" aria-label="{{item.name}}" aria-role="button"><view class="card-corner"><text>{{item.label}}</text><text>{{item.symbol}}</text></view><text class="card-symbol">{{item.symbol}}</text><text wx:if="{{item.wild}}" class="wild">配</text></view></view></view>
+      <view wx:if="{{counterOpen && vm.room.rules.allowCounter}}" class="counter"><view class="hint">其他人仍未打出的牌（按实体点数计，不含自己）</view><view class="counter-grid"><view wx:for="{{vm.counter}}" wx:key="rank"><text>{{item.label}}</text><text>{{item.count}}</text></view></view></view>
+      <view class="bottom-note">{{vm.demo?'体验桌 · 5 位机器人':'三人一队，隔位是队友'}} · 红桃 {{vm.room.currentLevel}} 为逢人配</view>
+    </block>
+  </block>
+</view>
+<view wx:if="{{vm.ended}}" class="overlay" catchtap="stopTap"><view class="sheet settlement"><view class="sheet-heading">{{vm.room.status==='finished'?'本场结束':'本局结算'}}</view><scroll-view scroll-y class="sheet-body"><view class="settlement-title">{{vm.room.settlement.winner==='A'?'蓝':'橙'}}队获得头游</view><view class="level-change">{{vm.room.settlement.fromLevel}} <text>→</text> {{vm.room.settlement.toLevel}} <text class="upgrade">+{{vm.room.settlement.upgrade}} 级</text></view><view class="settlement-reason">{{vm.room.settlement.reason}}</view><view class="ranking"><view wx:for="{{vm.ranking}}" wx:key="seat"><text class="rank-number">{{item.rank}}</text><text class="rank-name">{{item.name}}</text><text class="{{item.team}}">{{item.team==='A'?'蓝':'橙'}}队</text><text class="muted">{{item.place}}</text></view></view><view class="match-stats"><text>已完成 {{vm.room.matchStats.rounds}} 局</text><text>出牌 {{vm.room.totalPlays}} 次</text><text>最大炸弹 {{vm.room.biggestBomb}} 张</text></view><view wx:if="{{error}}" class="error">{{error}}</view></scroll-view>
+  <button wx:if="{{connection==='offline'}}" class="secondary" bindtap="refresh">重新连接</button><button wx:elif="{{vm.room.status==='finished'}}" class="primary" bindtap="leave" disabled="{{busy}}">返回大厅</button><button wx:elif="{{vm.host}}" class="primary" bindtap="next" disabled="{{busy || connection!=='online'}}">开始下一局</button><view wx:else class="hint">等待房主开始下一局</view><button wx:if="{{vm.room.status!=='finished'}}" class="text-button" bindtap="leave">暂时返回大厅</button>
+</view></view>

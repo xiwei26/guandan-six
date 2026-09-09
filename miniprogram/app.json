@@ -1,0 +1,8 @@
+{
+  "pages": ["pages/home/index", "pages/room/index", "pages/rules/index", "pages/history/index", "pages/settings/index"],
+  "window": {"navigationBarTitleText":"六人掼蛋","navigationBarBackgroundColor":"#f5f3ec","navigationBarTextStyle":"black","backgroundColor":"#f5f3ec","backgroundTextStyle":"dark"},
+  "style":"v2",
+  "lazyCodeLoading":"requiredComponents",
+  "sitemapLocation":"sitemap.json",
+  "networkTimeout":{"request":10000,"connectSocket":10000}
+}
