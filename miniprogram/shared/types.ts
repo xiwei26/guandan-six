@@ -3,15 +3,15 @@ export type Rank = '2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'10'|'J'|'Q'|'K'|'A'|'SJ'|'BJ
 export type Suit = 'spade'|'heart'|'club'|'diamond'|'joker';
 export type Team = 'A'|'B';
 export interface Card { id: string; deckIndex: 0|1|2; suit: Suit; rank: Rank }
-export type CombinationType = 'single'|'pair'|'triple'|'fullHouse'|'straight'|'threePairs'|'twoTriples'|'straightFlush'|'bomb';
+export type CombinationType = 'single'|'pair'|'triple'|'fullHouse'|'straight'|'threePairs'|'twoTriples'|'straightFlush'|'bomb'|'jokerBomb'|'kingBomb';
 export interface Combination { type: CombinationType; rank: number; size: number; cards: Card[]; label: string }
 export interface RuleConfig {
- ruleVersion: '6P_V1'; deckCount: 3; playerCount: 6; cardsPerPlayer: 27; teamSize: 3;
+ ruleVersion: '6P_V1'|'6P_V2'; deckCount: 3; playerCount: 6; cardsPerPlayer: 27; teamSize: 3;
  rounds: 1|2|4|8|'A'; turnSeconds: 0|15|30|60; showRemaining: boolean; allowAutoPlay: boolean; allowCounter: boolean;
  resistance: boolean; singleResistanceJokers: number; teamResistanceJokers: number;
  straightFlushBeats: number; mustBeatAce: boolean;
 }
-export const DEFAULT_RULES: RuleConfig = {ruleVersion:'6P_V1',deckCount:3,playerCount:6,cardsPerPlayer:27,teamSize:3,rounds:'A',turnSeconds:30,showRemaining:true,allowAutoPlay:true,allowCounter:true,resistance:true,singleResistanceJokers:2,teamResistanceJokers:3,straightFlushBeats:5,mustBeatAce:true};
+export const DEFAULT_RULES: RuleConfig = {ruleVersion:'6P_V2',deckCount:3,playerCount:6,cardsPerPlayer:27,teamSize:3,rounds:'A',turnSeconds:30,showRemaining:true,allowAutoPlay:true,allowCounter:true,resistance:true,singleResistanceJokers:2,teamResistanceJokers:3,straightFlushBeats:5,mustBeatAce:true};
 export interface Player { userId: string; nickname: string; seat: number; team: Team; hand: Card[]; ready: boolean; autoPlay: boolean; connected: boolean; bot: boolean; finishRank?: number }
 export interface PublicPlayer extends Omit<Player,'hand'> {remainingCards: number|null}
 export interface Tribute { from: number; to: number; given: boolean; returned: boolean; card?: Card; returnCard?: Card }

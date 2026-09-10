@@ -32,7 +32,7 @@ function validatedRules(patch: Partial<RuleConfig>): RuleConfig {
   requireThat(patch && typeof patch === 'object' && !Array.isArray(patch), '房间规则格式错误');
   requireThat(Object.keys(patch).every(key => key in DEFAULT_RULES), '包含不支持的房间规则');
   const rules = { ...DEFAULT_RULES, ...patch };
-  requireThat(rules.ruleVersion === '6P_V1' && rules.deckCount === 3 && rules.playerCount === 6 && rules.cardsPerPlayer === 27 && rules.teamSize === 3, '仅支持六人三副牌规则 6P_V1');
+  requireThat(['6P_V1','6P_V2'].includes(rules.ruleVersion) && rules.deckCount === 3 && rules.playerCount === 6 && rules.cardsPerPlayer === 27 && rules.teamSize === 3, '仅支持六人三副牌规则 6P_V1 / 6P_V2');
   requireThat([1,2,4,8,'A'].includes(rules.rounds), '不支持的局数');
   requireThat([0,15,30,60].includes(rules.turnSeconds), '不支持的出牌时限');
   requireThat(['showRemaining','allowAutoPlay','allowCounter','resistance','mustBeatAce'].every(key => typeof rules[key as keyof RuleConfig] === 'boolean'), '开关规则必须是布尔值');
@@ -86,6 +86,7 @@ function scheduleDeadline(state: GameState, now: number) {
 }
 
 function makeTribute(state: GameState, order: number[], winner: Team, count: number) {
+  count = Math.min(count,3);
   // Choose opposing players by their actual finish order: fixed ranks 5/6 can contain a winner.
   const donors = order.filter(seat => playerAt(state,seat).team !== winner).reverse().slice(0,count);
   const recipients = order.filter(seat => playerAt(state,seat).team === winner).slice(0,count);
@@ -139,7 +140,9 @@ function settleRound(state: GameState) {
   const order = [...state.finishOrder];
   const winner = playerAt(state,order[0]).team;
   const sweep = order.slice(0,3).every(seat => playerAt(state,seat).team === winner);
-  const upgrade = sweep ? 3 : playerAt(state,order[1]).team === winner ? 2 : 1;
+  let trailingOpponents = 0;
+  for (const seat of [...order].reverse()) { if (playerAt(state,seat).team === winner) break; trailingOpponents++; }
+  const upgrade = state.rules.ruleVersion === '6P_V2' ? trailingOpponents + 1 : sweep ? 3 : playerAt(state,order[1]).team === winner ? 2 : 1;
   const fromLevel = state.teamLevels[winner];
   const toLevel = LEVELS[Math.min(LEVELS.indexOf(fromLevel) + upgrade,LEVELS.length - 1)];
   state.teamLevels[winner] = toLevel;
@@ -305,7 +308,7 @@ function applyMutable(state: GameState, userId: string, action: GameAction, now:
       state.totalPlays++;
       state.matchStats.totalPlays = state.totalPlays;
       for (const card of combination.cards) state.playedCounts[card.rank] = (state.playedCounts[card.rank] ?? 0) + 1;
-      if (combination.type === 'bomb') {
+      if (['bomb','jokerBomb','kingBomb'].includes(combination.type)) {
         state.biggestBomb = Math.max(state.biggestBomb,combination.size);
         state.roundBomb = Math.max(state.roundBomb,combination.size);
         state.matchStats.biggestBomb = state.biggestBomb;

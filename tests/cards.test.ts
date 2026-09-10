@@ -96,9 +96,21 @@ test('bomb length outranks rank and straight flush position follows configuratio
   assert.ok(canBeat(flush, play(pick('2', 6)), { ...DEFAULT_RULES, straightFlushBeats: 6 }));
   assert.equal(canBeat(play(pick('4', 2)), play(pick('3', 3))), false);
   assert.equal(canBeat(play(pick('4', 2)), play(pick('4', 2))), false);
-  assert.ok(canBeat(play(pick('2', 4)), play(pick('BJ', 3))));
+  assert.equal(canBeat(play(pick('2', 4)), play(pick('BJ', 3))), false);
   const thirteen = [...pick('4', 12), ...pick('8', 1, 'heart')];
   assert.equal(parseCombination(thirteen, '8'), null);
+});
+
+test('V2 bomb hierarchy is strict, six jokers are unbeatable, and hints include king bombs', () => {
+  const kings=group(['BJ',3],['SJ',3]);
+  const chain=[play(kings),...Array.from({length:6},(_,i)=>play(pick('4',12-i))),play(pick('BJ',3)),play(pick('SJ',3)),play(pick('4',6)),play(sequence(['3','4','5','6','7'],1,'club')),play(pick('4',5)),play(pick('4',4)),play(pick('A',3))];
+  for(let i=0;i<chain.length;i++) { assert.equal(canBeat(chain[i],chain[i]),false);for(let j=i+1;j<chain.length;j++){assert.ok(canBeat(chain[i],chain[j]),`${chain[i].label} > ${chain[j].label}`);assert.equal(canBeat(chain[j],chain[i]),false);}}
+  assert.equal(findHints(kings,play(pick('4',12)),'8')[0].type,'kingBomb');
+  assert.equal(findHints(kings,play(kings),'8').length,0);
+  assert.equal(parseCombination(group(['BJ',2],['SJ',3],['8',1,'heart']),'8'),null);
+  const legacy={...DEFAULT_RULES,ruleVersion:'6P_V1' as const};
+  assert.equal(parseCombination(kings,'8',legacy),null);
+  assert.equal(parseCombination(pick('BJ',3),'8',legacy)?.type,'triple');
 });
 
 test('three heart level wildcards fill groups, sequences, flushes and bombs', () => {
@@ -115,15 +127,15 @@ test('three heart level wildcards fill groups, sequences, flushes and bombs', ()
   assert.equal(play(wild.slice(0, 2)).rank, 15);
 });
 
-test('jokers form natural pairs and triples but never accept wildcards or mixed-joker bombs', () => {
+test('jokers form pairs, three-joker bombs and six-joker bombs without wildcards', () => {
   for (const rank of ['SJ', 'BJ'] as const) {
     assert.equal(play(pick(rank, 2)).type, 'pair');
-    assert.equal(play(pick(rank, 3)).type, 'triple');
+    assert.equal(play(pick(rank, 3)).type, 'jokerBomb');
     assert.equal(parseCombination([...pick(rank), ...pick('8', 1, 'heart')], '8'), null);
     assert.equal(parseCombination([...pick(rank, 3), ...pick('8', 1, 'heart')], '8'), null);
   }
   assert.equal(parseCombination(group(['SJ', 2], ['BJ', 2]), '8'), null);
-  assert.equal(parseCombination(group(['SJ', 3], ['BJ', 3]), '8'), null);
+  assert.equal(play(group(['SJ', 3], ['BJ', 3])).type, 'kingBomb');
   assert.equal(play(group(['BJ', 3], ['SJ', 2])).type, 'fullHouse');
   assert.equal(play([...pick('BJ', 3), ...pick('8', 2, 'heart')]).rank, 17);
 });

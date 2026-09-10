@@ -27,10 +27,10 @@ const RULES=[
   '六人同桌，A / B 隔位组队；三副牌，每人 27 张。六人准备后由房主开始。',
   '大王 > 小王 > 级牌 > A 至 2。红桃级牌为逢人配，可以替普通牌，不能替王。',
   '支持单张、对子、三张、三带二、顺子、三连对、钢板、同花顺、4–12 张炸弹。',
-  '炸弹先比张数，默认六炸 > 同花顺 > 五炸。首出不能不出，跟牌必须压过上一手。',
-  '第五人出完结束，最后一人记末游。前三同队升 3 级，前二同队升 2 级，否则升 1 级。',
+  '天王炸 > 12–7 炸 > 三大王 > 三小王 > 6 炸 > 同花顺 > 5 炸 > 4 炸。王炸不许配牌。',
+  '头游队获胜。末尾连续 3 / 2 / 1 名对手，升 4 / 3 / 2 级；末游同队只升 1 级。',
   '出完者最后一手无人压，由顺时针最近的未出完队友接风，无队友则由下一人首出。',
-  '按升级数进 1 / 2 / 3 贡，进最大非逢人配牌；还 2–9 非级牌，没有时还最小非逢人配。',
+  '按升级数进贡，最多三贡；进最大非逢人配牌；还 2–9 非级牌，没有时还最小非逢人配。',
   '单贡者有 2 张大王可抗贡；双/三贡败队合计 3 张大王可抗贡。抗贡由上局头游首出。',
   '打到 A 需在己方 A 级且当前打 A 时获胜。固定局数打满结束，展示等级与本局排名。'
 ];
@@ -140,7 +140,7 @@ export class GuandanGame {
   private lobby(){this.text('六人掼蛋',64,112,58);this.text('三副牌 · 六人同桌 · 隔位组队',68,170,21,C.muted);
     this.text('A',80,275,58,C.blue);this.text('B',150,275,58,C.orange);this.text('A',220,275,58,C.blue);this.text('B',290,275,58,C.orange);this.text('A',360,275,58,C.blue);this.text('B',430,275,58,C.orange);
     this.text('27 张手牌，和队友一起打到 A。',68,345,22);
-    this.button('规则',68,425,110,()=>this.panel('六人规则 · 6P_V1',RULES));this.button('连接设置',194,425,130,()=>this.settings());
+    this.button('规则',68,425,110,()=>this.panel('六人规则 · 6P_V2',RULES));this.button('连接设置',194,425,130,()=>this.settings());
     const session=this.api.session();this.button('我的战绩',340,425,130,()=>this.history(),!!session);
     this.text(session?`你好，${session.nickname}`:'选择身份进入牌桌',580,92,25);
     if(!session){this.button(`昵称：${this.nickname}`,580,132,300,()=>this.input('昵称',this.nickname,s=>{if(!s||s.length>20)throw new Error('昵称为 1–20 字');this.nickname=s;},20));
@@ -162,6 +162,7 @@ export class GuandanGame {
     this.button('完成',250,402,460,()=>{this.configuring=false;this.draw();},true,true);
   }
   private table(){const room=this.room!,vm=tableView(room,this.selected,this.sort),online=this.state==='online';
+    this.text(`规则 ${room.rules.ruleVersion}${room.rules.ruleVersion==='6P_V1'?' · 旧版房间':''}`,24,68,15,C.muted);
     this.text(`六人掼蛋  /  ${room.roomId}`,24,28,21);this.text(`第 ${room.round} 局 · 打 ${room.currentLevel}    A ${room.teamLevels.A} : B ${room.teamLevels.B}`,310,28,18,C.gold);
     // Keep the upper-right corner clear for the native WeChat capsule menu.
     this.button('邀请',658,52,80,()=>this.platform.shareAppMessage(this.share()));this.button('大厅',746,52,80,()=>this.leave());

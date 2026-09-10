@@ -158,7 +158,7 @@ export function createApplication(options: Options = {}) {
     try {
       const url=new URL(req.url??'/',`http://${req.headers.host??'localhost'}`);
       const path=url.pathname;
-      if (path==='/api/health') return json(res,200,{ok:true,version:'0.1.0',ruleVersion:'6P_V1'});
+      if (path==='/api/health') return json(res,200,{ok:true,version:'0.1.0',ruleVersion:'6P_V2'});
       if (!path.startsWith('/api/')) {
         if (req.method!=='GET' && req.method!=='HEAD') throw new HttpError(405,'不支持的请求方式');
         const requested=resolve(publicDir,'.'+decodeURIComponent(path));

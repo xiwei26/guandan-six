@@ -8,9 +8,9 @@ export function Rules({onClose}:{onClose:()=>void}) {
   return <Modal title="六人版，30 秒了解" onClose={onClose} wide><p className="modal-intro">会玩普通掼蛋，就会玩六人掼蛋。</p><div className="rule-list">
     <section><span>01</span><div><h3>六个人，三人一队</h3><p>座位按蓝、橙交替排列。相邻是对手，隔位是队友；你的两个队友有相同的队伍颜色。</p></div></section>
     <section><span>02</span><div><h3>三副牌，每人还是 27 张</h3><p>共 162 张，三张红桃级牌都是逢人配。单张、对子、三张、三带二、顺子、三连对、钢板，都是熟悉的牌型。</p></div></section>
-    <section><span>03</span><div><h3>炸弹看张数，同花顺排在中间</h3><p>默认 12 炸 ＞ … ＞ 6 炸 ＞ 同花顺 ＞ 5 炸 ＞ 4 炸 ＞ 普通牌。逢人配不能变成大小王，本版不设混合王炸。</p></div></section>
-    <section><span>04</span><div><h3>前三同队，最高升 3 级</h3><p>头游所在队获胜。前三同队升 3 级，前二同队升 2 级，其他升 1 级。打到 A 模式还需成功打过 A。</p></div></section>
-  </div><details className="rules-detail"><summary>接风、贡还贡与操作说明</summary><p>玩家出完后，若最后一手无人压，顺时针最近的仍有手牌队友接风；无队友时交给下一位未出完玩家。</p><p>根据成绩进行单贡、双贡或三贡，从败队末位起对应胜队前位。贡最大的非逢人配牌，还 10 以下非级牌；没有小牌时还最小非逢人配牌。</p><p>单贡方持有至少两张大王可抗贡；多贡时败队合计三张大王，全队抗贡。抗贡由上局头游首出。</p><p>点击或横向滑动选择手牌，「提示」循环推荐。自由首出不能不出。时间到按配置托管：跟牌优先不出，首出尽量保留炸弹和逢人配。</p></details><button className="button primary full-width" onClick={onClose}>明白了，入座开掼</button></Modal>;
+    <section><span>03</span><div><h3>炸弹看张数，同花顺排在中间</h3><p>天王炸（3 大王 + 3 小王）＞ 12 炸 ＞ … ＞ 7 炸 ＞ 3 大王 ＞ 3 小王 ＞ 6 炸 ＞ 同花顺 ＞ 5 炸 ＞ 4 炸。王炸不可使用逢人配。</p></div></section>
+    <section><span>04</span><div><h3>看末尾名次，最高升 4 级</h3><p>头游所在队获胜。末尾连续三、二、一名对手分别升 4、3、2 级；末游为己方时只升 1 级。打到 A 模式还需成功打过 A。</p></div></section>
+  </div><details className="rules-detail"><summary>接风、贡还贡与操作说明</summary><p>玩家出完后，若最后一手无人压，顺时针最近的仍有手牌队友接风；无队友时交给下一位未出完玩家。</p><p>按升级数进行单贡、双贡或三贡，最多三贡，从败队末位起对应胜队前位。贡最大的非逢人配牌，还 10 以下非级牌；没有小牌时还最小非逢人配牌。</p><p>单贡方持有至少两张大王可抗贡；多贡时败队合计三张大王，全队抗贡。抗贡由上局头游首出。</p><p>点击或横向滑动选择手牌，「提示」循环推荐。自由首出不能不出。时间到按配置托管：跟牌优先不出，首出尽量保留炸弹和逢人配。</p></details><button className="button primary full-width" onClick={onClose}>明白了，入座开掼</button></Modal>;
 }
 export function History({session,onClose}:{session:Session|null;onClose:()=>void}) {
   const [entries,setEntries]=useState<HistoryEntry[]|null>(null);const [stats,setStats]=useState<StatsSummary|null>(null);const [error,setError]=useState('');

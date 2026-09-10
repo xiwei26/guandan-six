@@ -41,7 +41,7 @@ export function Home({session,busy,enter,resume,resumeId,error}:{session:Session
         <span className="art-caption">好牌不如好搭档</span><span className="art-line"/>
       </div>
     </section>
-    <section className="home-rules" aria-label="六人版的不同"><div><Users size={22}/><p><b>多两个人，多一份配合</b><span>三人组队，隔位而坐</span></p></div><div><Layers size={22}/><p><b>三副牌，依然每人 27 张</b><span>熟悉的牌型，不变的上手方式</span></p></div><div><Sprout size={22}/><p><b>一起争头游，一起升等级</b><span>前三同队，最高可升 3 级</span></p></div></section>
+    <section className="home-rules" aria-label="六人版的不同"><div><Users size={22}/><p><b>多两个人，多一份配合</b><span>三人组队，隔位而坐</span></p></div><div><Layers size={22}/><p><b>三副牌，依然每人 27 张</b><span>熟悉的牌型，不变的上手方式</span></p></div><div><Sprout size={22}/><p><b>一起争头游，一起升等级</b><span>对方包揽末三名，升 4 级</span></p></div></section>
     {mode&&<Modal title={mode==='create'?'创建好友房':'加入好友房'} onClose={()=>!busy&&setMode(null)}><form onSubmit={e=>{e.preventDefault();void start();}}>
       {!session&&<label className="form-field">你的昵称<input placeholder="输入昵称" maxLength={20} value={nickname} onChange={e=>setNickname(e.target.value)} required/></label>}
       {mode==='join'?<><p className="muted">输入好友分享的 6 位房间号，入座后即可准备。</p><label className="form-field">房间号<input className="room-code-input" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} placeholder="000000" value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,''))} required autoFocus/></label></>:<>

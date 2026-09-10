@@ -15,8 +15,8 @@
     <button wx:if="{{resumeId}}" class="resume" bindtap="resume" disabled="{{busy}}">↩ 返回房间 {{resumeId}}</button>
   </view>
   <view wx:if="{{error && !modal}}" class="error" role="alert">{{error}}</view>
-  <view class="home-rules"><view><text class="rule-icon">六</text><view><text>多两个人，多一份配合</text><view class="muted">三人组队，隔位而坐</view></view></view><view><text class="rule-icon">牌</text><view><text>三副牌，依然每人 27 张</text><view class="muted">熟悉的牌型，不变的上手方式</view></view></view><view><text class="rule-icon">升</text><view><text>一起争头游，一起升等级</text><view class="muted">前三同队，最高可升 3 级</view></view></view></view>
-  <view class="footer">三人一队 · 六人开掼 <text>规则 6P_V1</text></view>
+  <view class="home-rules"><view><text class="rule-icon">六</text><view><text>多两个人，多一份配合</text><view class="muted">三人组队，隔位而坐</view></view></view><view><text class="rule-icon">牌</text><view><text>三副牌，依然每人 27 张</text><view class="muted">熟悉的牌型，不变的上手方式</view></view></view><view><text class="rule-icon">升</text><view><text>一起争头游，一起升等级</text><view class="muted">对方包揽末三名，升 4 级</view></view></view></view>
+  <view class="footer">三人一队 · 六人开掼 <text>规则 6P_V2</text></view>
 </view>
 <view wx:if="{{modal}}" class="overlay" catchtap="closeModal">
   <view class="sheet" catchtap="stopTap"><view class="sheet-heading"><text>{{modal==='create'?'创建好友房':'加入好友房'}}</text><button class="close" bindtap="closeModal" disabled="{{busy}}" aria-label="关闭">×</button></view>

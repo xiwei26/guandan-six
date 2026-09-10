@@ -3,7 +3,7 @@ import { DEFAULT_RULES, type Card, type Combination, type CombinationType, type 
 export const RANKS: Rank[] = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const ALL_RANKS: Rank[] = [...RANKS, 'SJ', 'BJ'];
 const SUITS: Suit[] = ['spade', 'heart', 'club', 'diamond'];
-const NAMES: Record<CombinationType, string> = { single: '单张', pair: '对子', triple: '三张', fullHouse: '三带二', straight: '顺子', threePairs: '三连对', twoTriples: '钢板', straightFlush: '同花顺', bomb: '炸弹' };
+const NAMES: Record<CombinationType, string> = { single: '单张', pair: '对子', triple: '三张', fullHouse: '三带二', straight: '顺子', threePairs: '三连对', twoTriples: '钢板', straightFlush: '同花顺', bomb: '炸弹', jokerBomb:'三王炸', kingBomb:'天王炸' };
 const NATURAL: Record<string, number> = Object.fromEntries(ALL_RANKS.map((rank, i) => [rank, i + 2]));
 
 export function isWildcard(card: Card, level: Rank): boolean { return card.suit === 'heart' && card.rank === level; }
@@ -68,13 +68,17 @@ function sequences(length: number): Rank[][] {
 }
 const SEQUENCES = { 2: sequences(2), 3: sequences(3), 5: sequences(5) };
 
-function* patterns(size: number | null, level: Rank, requested?: CombinationType): Generator<Pattern> {
+function* patterns(size: number | null, level: Rank, requested?: CombinationType, rules: RuleConfig = DEFAULT_RULES): Generator<Pattern> {
   const wants = (type: CombinationType, count: number) => (size === null || size === count) && (!requested || requested === type);
   for (const [type, count] of [['single', 1], ['pair', 2], ['triple', 3], ['bomb', 4]] as const) {
     const counts = type === 'bomb' ? Array.from({ length: 9 }, (_, i) => i + 4) : [count];
     for (const n of counts) if (wants(type, n)) {
-      for (const rank of type === 'bomb' ? RANKS : ALL_RANKS) yield { type, strength: rankStrength(rank, level), targets: [{ rank, count: n }] };
+      for (const rank of type === 'bomb' || (type === 'triple' && rules.ruleVersion === '6P_V2') ? RANKS : ALL_RANKS) yield { type, strength: rankStrength(rank, level), targets: [{ rank, count: n }] };
     }
+  }
+  if (rules.ruleVersion === '6P_V2') {
+    if (wants('jokerBomb',3)) for (const rank of ['SJ','BJ'] as const) yield {type:'jokerBomb',strength:rankStrength(rank,level),targets:[{rank,count:3}]};
+    if (wants('kingBomb',6)) yield {type:'kingBomb',strength:100,targets:[{rank:'BJ',count:3},{rank:'SJ',count:3}]};
   }
   if (wants('fullHouse', 5)) for (const triple of ALL_RANKS) for (const pair of ALL_RANKS) {
     if (triple !== pair) yield { type: 'fullHouse', strength: rankStrength(triple, level), targets: [{ rank: triple, count: 3 }, { rank: pair, count: 2 }] };
@@ -90,9 +94,11 @@ function* patterns(size: number | null, level: Rank, requested?: CombinationType
 }
 
 function combination(pattern: Pattern, cards: readonly Card[]): Combination {
-  return { type: pattern.type, rank: pattern.strength, size: cards.length, cards: [...cards], label: pattern.type === 'bomb' ? `${cards.length} 炸` : NAMES[pattern.type] };
+  return { type: pattern.type, rank: pattern.strength, size: cards.length, cards: [...cards], label: pattern.type === 'bomb' ? `${cards.length} 炸` : pattern.type === 'jokerBomb' ? pattern.strength === 17 ? '三大王炸' : '三小王炸' : NAMES[pattern.type] };
 }
 function power(play: Combination, rules: RuleConfig): number {
+  if (play.type === 'kingBomb') return 100;
+  if (play.type === 'jokerBomb') return 13;
   return play.type === 'bomb' ? play.size * 2 : play.type === 'straightFlush' ? rules.straightFlushBeats * 2 + 1 : 0;
 }
 /** A positive result means a beats b; incomparable ordinary shapes return zero. */
@@ -115,7 +121,7 @@ export function findCombinations(cards: readonly Card[], level: Rank, rules: Rul
   const naturals = cards.filter(card => !isWildcard(card, level));
   const result: Combination[] = [];
   const seen = new Set<string>();
-  for (const pattern of patterns(cards.length, level)) {
+  for (const pattern of patterns(cards.length, level, undefined, rules)) {
     if (pattern.suit && naturals.some(card => card.suit !== pattern.suit)) continue;
     const remaining = new Map(pattern.targets.map(target => [target.rank, target.count]));
     let fits = true;
@@ -153,8 +159,9 @@ export function findHints(hand: readonly Card[], lastPlay: Combination | null, l
     const key = `${value.type}:${value.rank}:${cards.map(card => card.id).sort().join(',')}`;
     if (!seen.has(key)) { seen.add(key); result.push(value); }
   };
-  const types: CombinationType[] = lastPlay ? (power(lastPlay, rules) ? ['bomb', 'straightFlush'] : [lastPlay.type, 'bomb', 'straightFlush'])
-    : ['single', 'pair', 'triple', 'fullHouse', 'straight', 'threePairs', 'twoTriples', 'bomb', 'straightFlush'];
+  const bombs: CombinationType[] = ['bomb','straightFlush','jokerBomb','kingBomb'];
+  const types: CombinationType[] = lastPlay ? (power(lastPlay, rules) ? bombs : [lastPlay.type, ...bombs])
+    : ['single', 'pair', 'triple', 'fullHouse', 'straight', 'threePairs', 'twoTriples', ...bombs];
   for (const type of types) {
     if (type === 'single') {
       const representatives = new Map<Rank, Card>();
@@ -163,7 +170,7 @@ export function findHints(hand: readonly Card[], lastPlay: Combination | null, l
       for (const card of representatives.values()) add({ type: 'single', strength: cardStrength(card, level), targets: [] }, [card]);
       continue;
     }
-    for (const pattern of patterns(null, level, type)) {
+    for (const pattern of patterns(null, level, type, rules)) {
       const count = pattern.targets.reduce((sum, target) => sum + target.count, 0);
       if (count > hand.length || !canBeat(combination(pattern, Array(count).fill(null)), lastPlay, rules)) continue;
       const sources = pattern.targets.map(target => (buckets.get(target.rank) ?? []).filter(card => !pattern.suit || card.suit === pattern.suit));

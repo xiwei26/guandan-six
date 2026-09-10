@@ -153,8 +153,8 @@ test('wind skips finished teammates and falls back clockwise if the whole team h
   assert.equal(state.status,'playing');
 });
 
-test('round waits for five finishers, assigns the last rank and awards simple +1/+2/+3 levels', () => {
-  for (const [order,upgrade] of [ [[1,3,5,2,4,6],3], [[1,3,2,4,5,6],2], [[1,2,3,4,5,6],1] ] as [number[],number][]) {
+test('round waits for five finishers, assigns the last rank and awards +1/+2/+3/+4 by trailing opponents', () => {
+  for (const [order,upgrade] of [ [[1,3,5,2,4,6],4], [[1,2,3,5,4,6],3], [[1,3,2,4,5,6],2], [[1,2,3,4,6,5],1] ] as [number[],number][]) {
     const state = nearFinish(order);
     play(state,order[4]);
     assert.deepEqual(state.finishOrder,order);
@@ -163,6 +163,23 @@ test('round waits for five finishers, assigns the last rank and awards simple +1
     assert.equal(state.players[order[5] - 1].hand.length,1);
     assert.equal(state.status,'settlement');
   }
+});
+
+test('all 720 finish orders award levels from the trailing opposing team', () => {
+  function* permutations(seats:number[]):Generator<number[]> {if(!seats.length){yield [];return;}for(const seat of seats)for(const tail of permutations(seats.filter(s=>s!==seat)))yield [seat,...tail];}
+  for(const order of permutations([1,2,3,4,5,6])) {
+    const state=nearFinish(order);play(state,order[4]);
+    const team=order[0]%2;let tail=0;for(let i=5;i>=0&&order[i]%2!==team;i--)tail++;
+    assert.equal(state.settlement!.upgrade,tail+1,order.join(','));
+  }
+  const legacy=nearFinish([1,3,5,2,4,6]);legacy.rules.ruleVersion='6P_V1';play(legacy,4);assert.equal(legacy.settlement!.upgrade,3);
+});
+
+test('four-level victory creates three valid tribute pairs and labels them correctly',()=>{
+  const state=nearFinish([1,3,5,2,4,6]);state.rules.resistance=false;play(state,4);
+  assert.equal(state.settlement!.upgrade,4);applyAction(state,'p1',{type:'next'});
+  assert.equal(state.tribute.length,3);assert.ok(state.tribute.every(t=>t.from%2!==t.to%2));
+  assert.ok(state.messages.some(m=>m.includes('三贡阶段')));
 });
 
 test('levels cap at A and require winning an A round; fixed rooms end at the configured round', () => {
@@ -185,8 +202,8 @@ test('levels cap at A and require winning an A round; fixed rooms end at the con
   invalidWithoutMutation(fixed,'p1',{ type: 'next' });
 });
 
-test('next-round double tribute uses the lowest ranked opponents, never a winning teammate', () => {
-  const state = nearFinish([1,3,2,4,5,6]);
+test('legacy next-round double tribute uses the lowest ranked opponents, never a winning teammate', () => {
+  const state = nearFinish([1,3,2,4,5,6]); state.rules.ruleVersion = '6P_V1';
   // Winner seats 1,3,5 occupy ranks 1,2,6: fixed rank 6 would incorrectly tribute to its teammate.
   state.finishOrder = [1,3,2,4];
   state.currentTurnSeat = 6;
@@ -269,6 +286,15 @@ test('connection recovery keeps the private hand and state; waiting host departu
   assert.equal(waiting.players.length,5);
   addPlayer(waiting,'replacement','新玩家');
   assert.equal(waiting.players.find(p => p.userId === 'replacement')!.seat,1);
+});
+
+test('server accepts natural joker bombs and records them as bombs',()=>{
+  for(const ranks of [['BJ','BJ','BJ'],['SJ','SJ','SJ'],['BJ','BJ','BJ','SJ','SJ','SJ']] as Rank[][]){
+    const state=handFixture([ranks,['3'],['4'],['5'],['6'],['7']]);
+    applyAction(state,'p1',{type:'play',cardIds:state.players[0].hand.map(c=>c.id)});
+    assert.equal(state.lastPlay?.type,ranks.length===6?'kingBomb':'jokerBomb');
+    assert.equal(state.matchStats.bombs[ranks.length],1);
+  }
 });
 
 test('bombs and played cards feed round and match statistics', () => {

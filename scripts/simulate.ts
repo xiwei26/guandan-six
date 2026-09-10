@@ -110,7 +110,7 @@ while (roundsCompleted < roundCount) {
         assert.ok(state.lastPlay);
         observedTypes[state.lastPlay.type] = (observedTypes[state.lastPlay.type] ?? 0) + 1;
         for (const card of state.lastPlay.cards) { assert.ok(!discarded.has(card.id), 'A card was played twice'); discarded.add(card.id); }
-        if (state.lastPlay.type === 'bomb') playedBombs[state.lastPlay.size] = (playedBombs[state.lastPlay.size] ?? 0) + 1;
+        if (['bomb','jokerBomb','kingBomb'].includes(state.lastPlay.type)) playedBombs[state.lastPlay.size] = (playedBombs[state.lastPlay.size] ?? 0) + 1;
         playedCombinations++;
       }
       verify(state, discarded);
@@ -121,8 +121,9 @@ while (roundsCompleted < roundCount) {
     assert.equal(state.finishOrder.length, 6);
     assert.equal(new Set(state.finishOrder).size, 6);
     const winner = state.players.find(player => player.seat === state.finishOrder[0])!.team;
-    const expectedUpgrade = state.finishOrder.slice(0, 3).every(seat => state.players.find(player => player.seat === seat)!.team === winner) ? 3
-      : state.players.find(player => player.seat === state.finishOrder[1])!.team === winner ? 2 : 1;
+    // The last winning teammate's placement determines the trailing opposing run.
+    const lastWinnerIndex = state.finishOrder.map(seat => state.players.find(player => player.seat === seat)!.team === winner).lastIndexOf(true);
+    const expectedUpgrade = 6 - lastWinnerIndex;
     assert.equal(state.settlement.winner, winner);
     assert.equal(state.settlement.upgrade, expectedUpgrade);
     if (state.settlement.sweep) sweeps++;
@@ -142,7 +143,7 @@ while (roundsCompleted < roundCount) {
 
 const percentage = (numerator: number, denominator: number) => denominator ? Number((numerator / denominator * 100).toFixed(2)) : 0;
 console.log(JSON.stringify({
-  ruleVersion: '6P_V1',
+  ruleVersion: '6P_V2',
   seed,
   note: '发牌分布使用固定种子；完整对局使用正式服务端加密洗牌。机器人数据仅用于技术验证，不代表真人平衡性或对局时长。天然炸弹按每种点数的完整张数组计数，不重复计入其子炸弹；六炸潜力包含可用逢人配，未计算重叠消耗。',
   randomDeals: {
