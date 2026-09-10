@@ -1,3 +1,3 @@
-// 开发者工具本机联调默认地址。真机请在「连接设置」填写局域网或已配置合法域名的 HTTPS 地址。
-// 这里不存放 AppSecret；正式发布前修改为已部署的 HTTPS 服务域名。
-export const API_BASE_URL = 'http://127.0.0.1:3001';
+// 小游戏联网测试默认地址；本机调试可在「连接设置」切换到 http://127.0.0.1:3001。
+// AppSecret 仅保存在 VPS 环境变量，不能打包进客户端。
+export const API_BASE_URL = 'https://gd6.super-idol.com';

@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+node_modules
+.npm-cache
+data
+dist
+build
+output
+*.log
+project.private.config.json

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:server": "tsx scripts/build-server.ts",
     "build:game": "tsx scripts/sync-shared.ts && tsc -p game-src/tsconfig.json && tsx scripts/build-game.ts",
     "check:game": "tsx --test tests/minigame.test.ts",
     "dev": "concurrently -k \"tsx watch server/index.ts\" \"vite --host 0.0.0.0\"",

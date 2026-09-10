@@ -13,6 +13,7 @@ function harness(loggedIn=false){
   const events:Record<string,(value?:any)=>any>={};
   let texts:{s:string;x:number;y:number}[]=[];
   const storage=new Map<string,unknown>();
+  storage.set('gd6.server','http://127.0.0.1:3001');
   const session={token:'test',userId:'p1',nickname:'测试玩家',provider:'guest'};
   if(loggedIn)storage.set('gd6.http://127.0.0.1:3001.session',session);
   const state=createRoom('123456','p1','测试玩家');for(let i=2;i<=6;i++)addPlayer(state,`p${i}`,`玩家${i}`);

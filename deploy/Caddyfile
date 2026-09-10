@@ -1,0 +1,4 @@
+gd6.super-idol.com {
+    encode gzip
+    reverse_proxy app:3001
+}
