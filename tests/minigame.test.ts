@@ -68,6 +68,14 @@ test('game selects cards, submits server hints and recovers foreground snapshot'
   h.events.Hide();h.events.Show({});await h.flush();h.publish();assert.equal(h.sockets.length,2);assert.equal(h.timers.size,1);
   h.events.Hide();assert.equal(h.errors.length,0);
 });
+test('game auto arrangement opens editable groups without submitting a server action',async()=>{
+  const h=harness(true);h.click('体验一局 · 五位机器人');await h.flush();
+  for(const p of h.state.players)applyAction(h.state,p.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});h.publish();
+  h.click('一键理牌');assert.ok(h.texts().some(t=>t.s.startsWith('手牌分组')));
+  const label=h.texts().find(t=>/^1\. /.test(t.s))!.s;h.click(label);h.click('选牌成组');h.click('完成');h.click('调整');
+  assert.ok(h.texts().some(t=>t.s.startsWith('手牌分组')));assert.equal(h.actions.length,0);h.events.Hide();
+});
+
 test('game maps safe-area touch coordinates and chooses the topmost card',()=>{
   const v=viewport(844,390,{left:44,top:0,right:800,bottom:369});assert.ok(v.x>=44);assert.ok(v.x+960*v.scale<=800);
   const hits=[{x:0,y:0,w:58,h:44,card:'a',run(){}},{x:0,y:30,w:58,h:44,card:'b',run(){}}];

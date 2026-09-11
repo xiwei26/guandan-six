@@ -1,6 +1,7 @@
 import { MiniClient, ApiError, errorMessage } from '../miniprogram/services/client';
 import { RoomConnection, type ConnectionState } from '../miniprogram/services/connection';
-import { tableView, DEFAULT_OPTIONS } from '../miniprogram/utils/presentation';
+import { tableView, DEFAULT_OPTIONS, cardView } from '../miniprogram/utils/presentation';
+import {arrangeHand,reconcileGroups,manualGroup,groupCards,type HandGroup} from './arrangement';
 import type { RoomView, GameAction, RuleConfig } from '../shared/types';
 import { WIDTH, HEIGHT, viewport, hitAt, type Hit } from './layout';
 
@@ -49,6 +50,9 @@ export class GuandanGame {
   private busy=false;
   private selected:string[]=[];
   private sort:'rank'|'suit'='rank';
+  private groups:HandGroup[]|null=null;
+  private arranging=false;
+  private groupPage=0;
   private hintIndex=0;
   private drag?:{select:boolean;seen:Set<string>};
   private timer?:ReturnType<typeof setInterval>;
@@ -105,7 +109,8 @@ export class GuandanGame {
     void this.task(async()=>{const epoch=this.epoch;const room=await this.api.enter(mode,mode==='create'?this.options:id);if(!this.visible||epoch!==this.epoch)return;this.accept(room);this.connect();});}
   private accept(room:RoomView){if(this.room?.roomId===room.roomId&&room.revision<this.room.revision)return;
     if(this.room?.round!==room.round||this.room?.totalPlays!==room.totalPlays)this.hintIndex=0;
-    if(this.room?.round!==room.round)this.selected=[];
+    if(this.room?.round!==room.round||this.room?.roomId!==room.roomId){this.selected=[];this.groups=null;this.arranging=false;}
+    if(this.groups)this.groups=reconcileGroups(this.groups,room.hand,room.currentLevel,room.rules);
     this.selected=this.selected.filter(id=>room.hand.some(c=>c.id===id));this.room=room;this.draw();}
   private connect(){this.connection?.stop();const session=this.api.session();if(!session||!this.room||!this.visible)return;
     const epoch=++this.epoch;this.connection=new RoomConnection(this.platform,this.api.server(),session,this.room.roomId,{
@@ -132,6 +137,7 @@ export class GuandanGame {
   ]);});}
   draw(){if(!this.ctx||!this.visible)return;this.hits=[];this.ctx.save();this.ctx.setTransform(1,0,0,1,0,0);this.ctx.fillStyle=C.bg;this.ctx.fillRect(0,0,this.canvas.width,this.canvas.height);this.ctx.restore();
     if(this.room)this.table();else this.lobby();
+    if(this.arranging&&this.room&&!['settlement','finished','waiting'].includes(this.room.status))this.drawArrangement();
     if(this.overlay)this.drawPanel();
     if(this.configuring)this.drawOptions();
     if(this.editing){this.box(180,180,600,120,C.panel);this.text(this.editing.title,210,220,24);this.text('输入后点击键盘「完成」',210,265,18,C.muted);this.hits=[];}
@@ -185,8 +191,10 @@ export class GuandanGame {
     this.text(seconds,590,174,19,C.muted);
     if(vm.played.length){this.text(vm.lastLabel.slice(0,26),295,206,16,C.muted);vm.played.forEach((c,i)=>this.card(c,295+i*Math.min(30,350/Math.max(1,vm.played.length-1)),223,42,63));}
     else this.text(vm.tribute?'请完成贡还贡':'等待首出',338,244,24,C.muted);
-    this.button(this.sort==='rank'?'按花色':'按点数',24,320,106,()=>{this.sort=this.sort==='rank'?'suit':'rank';this.draw();});
+    this.button(this.sort==='rank'?'按花色':'按点数',24,320,106,()=>{this.sort=this.sort==='rank'?'suit':'rank';this.groups=null;this.arranging=false;this.draw();});
     this.button('清空',140,320,80,()=>{this.selected=[];this.draw();});
+    this.button('一键理牌',230,320,104,()=>{this.groups=arrangeHand(room.hand,room.currentLevel,room.rules);this.selected=[];this.groupPage=0;this.arranging=true;this.draw();},room.hand.length>0);
+    this.button('调整',344,320,70,()=>{this.groups??=reconcileGroups([],room.hand,room.currentLevel,room.rules);this.arranging=true;this.draw();},room.hand.length>0);
     this.button(vm.me.autoPlay?'取消托管':'托管',740,320,110,()=>this.act({type:'auto',enabled:!vm.me.autoPlay}),online&&room.rules.allowAutoPlay);
     this.button('记牌',860,320,76,()=>this.panel('记牌器 · 公开信息',vm.counter.map(c=>`${c.label}：${c.count}`).reduce<string[]>((rows,s,i)=>{if(i%5===0)rows.push(s);else rows[rows.length-1]+='      '+s;return rows;},[])),room.rules.allowCounter);
     if(vm.tribute){this.button(vm.tributeLabel,480,488,164,()=>this.act(room.tribute.some(t=>t.from===room.mySeat&&!t.given)?{type:'tribute'}:{type:'tribute',cardId:this.selected[0]}),online&&vm.canTribute,true);
@@ -194,13 +202,31 @@ export class GuandanGame {
     }else{this.button('提示',490,488,100,()=>this.hint(),online&&vm.mine);this.button('不出',602,488,100,()=>this.act({type:'pass'}),online&&vm.canPass);
       this.button('出牌',714,488,130,()=>this.act({type:'play',cardIds:[...this.selected]}),online&&vm.canPlay,true);}
     this.text(vm.selectionText.slice(0,27),24,510,16,C.muted);
-    vm.rows.forEach((row,r)=>row.cards.forEach((c,i)=>{const x=24+i*61,y=390+r*45-(c.selected?12:0);this.card(c,x,y,58,44);this.hits.push({x,y,w:58,h:44,card:c.id,run:()=>{}});}));
+    const ordered=this.groups?this.groups.flatMap(g=>g.ids).map(id=>room.hand.find(c=>c.id===id)!).filter(Boolean).map(c=>cardView(c,room.currentLevel,this.selected)):null;
+    const rows=ordered?[ordered.slice(0,14),ordered.slice(14)]:vm.rows.map(r=>r.cards);
+    rows.forEach((row,r)=>row.forEach((c,i)=>{const x=24+i*61,y=390+r*45-(c.selected?12:0);this.card(c,x,y,58,44);
+      if(this.groups){const n=this.groups.findIndex(g=>g.ids.includes(c.id));this.box(x,y+41,58,3,n%2?C.blue:C.gold);this.text(String(n+1),x+42,y+31,11,C.bg);}
+      this.hits.push({x,y,w:58,h:44,card:c.id,run:()=>{}});}));
     if(vm.ended){this.hits=[];this.box(215,102,530,364,C.panel);this.text(`${room.settlement?.winner} 队获胜 · 升 ${room.settlement?.upgrade} 级`,245,139,28,C.gold);
       vm.ranking.forEach((r,i)=>this.text(`${r.place}   ${r.name.slice(0,12)}   ${r.team} 队`,250,184+i*32,18));
       this.button(room.status==='finished'?'整场结束':'下一局',245,408,220,()=>this.act({type:'next'}),online&&vm.host&&room.status==='settlement',true);
       this.button('返回大厅',487,408,220,()=>this.leave());}
   }
   private card(c:{label:string;symbol:string;red:boolean;wild:boolean;selected?:boolean},x:number,y:number,w:number,h:number){this.box(x,y,w,h,c.selected?'#ffe1a0':'#fff9eb');this.text(c.label+c.symbol,x+4,y+15,19,c.red?'#bc3434':'#163f39');if(c.wild)this.text('配',x+4,y+h-9,11,'#9b630c');}
+  private drawArrangement(){const room=this.room!,groups=this.groups!;this.hits=this.hits.filter(h=>h.card);
+    this.box(210,94,530,216,C.panel);const pages=Math.max(1,Math.ceil(groups.length/3));this.groupPage=Math.min(this.groupPage,pages-1);
+    this.text(`手牌分组 ${this.groupPage+1}/${pages}`,225,119,22,C.gold);
+    this.button('上页',566,98,76,()=>{this.groupPage--;this.draw();},this.groupPage>0);this.button('下页',650,98,76,()=>{this.groupPage++;this.draw();},this.groupPage<pages-1);
+    groups.slice(this.groupPage*3,this.groupPage*3+3).forEach((g,i)=>{const index=this.groupPage*3+i,y=144+i*41;
+      this.button(`${index+1}. ${g.label} · ${g.ids.length}张`,224,y,222,()=>{this.selected=[...g.ids];this.draw();});
+      this.button('前移',454,y,76,()=>{[groups[index-1],groups[index]]=[groups[index],groups[index-1]];this.draw();},index>0);
+      this.button('后移',538,y,76,()=>{[groups[index+1],groups[index]]=[groups[index],groups[index+1]];this.draw();},index<groups.length-1);
+      this.button('拆组',622,y,104,()=>{groups.splice(index,1,...g.ids.map(id=>groupCards([room.hand.find(c=>c.id===id)!],room.currentLevel,room.rules)));this.draw();},g.ids.length>1);
+    });
+    this.button('选牌成组',224,268,146,()=>{try{this.groups=manualGroup(groups,room.hand,this.selected,room.currentLevel,room.rules);this.groupPage=0;this.selected=[];this.draw();}catch(e){this.error(e);}},this.selected.length>0);
+    this.button('重新自动理牌',378,268,174,()=>{this.groups=arrangeHand(room.hand,room.currentLevel,room.rules);this.selected=[];this.groupPage=0;this.draw();});
+    this.button('完成',622,268,104,()=>{this.arranging=false;this.draw();},true,true);
+  }
   private drawPanel(){const p=this.overlay!;this.hits=[];this.box(105,64,750,430,C.panel);this.text(p.title,132,99,27,C.gold);
     const lines:string[]=[];for(const line of p.lines){let part='';for(const ch of line){this.ctx.font='18px sans-serif';if(this.ctx.measureText(part+ch).width>685){lines.push(part);part=ch;}else part+=ch;}lines.push(part);}
     const pages=Math.max(1,Math.ceil(lines.length/8));p.page=Math.min(p.page,pages-1);lines.slice(p.page*8,p.page*8+8).forEach((line,i)=>this.text(line,132,147+i*32,18));
