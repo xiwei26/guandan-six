@@ -3,7 +3,7 @@ import { RoomConnection, type ConnectionState } from '../miniprogram/services/co
 import { tableView, DEFAULT_OPTIONS, cardView } from '../miniprogram/utils/presentation';
 import {arrangeHand,reconcileGroups,manualGroup,groupCards,type HandGroup} from './arrangement';
 import type { RoomView, GameAction, RuleConfig } from '../shared/types';
-import { WIDTH, HEIGHT, viewport, hitAt, type Hit } from './layout';
+import { WIDTH, HEIGHT, viewport, hitAt, handLayout, type Hit } from './layout';
 
 type TouchEvent={touches:{clientX:number;clientY:number}[]};
 type Launch={query?:Record<string,string>};
@@ -173,7 +173,7 @@ export class GuandanGame {
     // Keep the upper-right corner clear for the native WeChat capsule menu.
     this.button('邀请',658,52,80,()=>this.platform.shareAppMessage(this.share()));this.button('大厅',746,52,80,()=>this.leave());
     this.button(online?'已连接':'重连',834,52,100,()=>void this.restore(room.roomId),!online);
-    const positions=[[420,308],[758,214],[758,100],[420,70],[28,100],[28,214]];
+    const positions=[[420,286],[758,214],[758,100],[420,70],[28,100],[28,214]];
     vm.seats.forEach(s=>{const [x,y]=positions[s.relative];this.box(x,y,174,72,s.active?'#366454':C.panel);this.box(x,y,4,72,s.team==='A'?C.blue:C.orange);
       this.text(`${s.seat} · ${s.nickname.slice(0,9)}`,x+12,y+22,17,s.team==='A'?C.blue:C.orange);
       this.text(`${s.offline?'离线 · ':''}${s.pass?'不出':s.detail}`,x+12,y+49,15,C.muted);
@@ -203,16 +203,26 @@ export class GuandanGame {
       this.button('出牌',714,488,130,()=>this.act({type:'play',cardIds:[...this.selected]}),online&&vm.canPlay,true);}
     this.text(vm.selectionText.slice(0,27),24,510,16,C.muted);
     const ordered=this.groups?this.groups.flatMap(g=>g.ids).map(id=>room.hand.find(c=>c.id===id)!).filter(Boolean).map(c=>cardView(c,room.currentLevel,this.selected)):null;
-    const rows=ordered?[ordered.slice(0,14),ordered.slice(14)]:vm.rows.map(r=>r.cards);
-    rows.forEach((row,r)=>row.forEach((c,i)=>{const x=24+i*61,y=390+r*45-(c.selected?12:0);this.card(c,x,y,58,44);
-      if(this.groups){const n=this.groups.findIndex(g=>g.ids.includes(c.id));this.box(x,y+41,58,3,n%2?C.blue:C.gold);this.text(String(n+1),x+42,y+31,11,C.bg);}
-      this.hits.push({x,y,w:58,h:44,card:c.id,run:()=>{}});}));
+    const cards=ordered??vm.rows.flatMap(r=>r.cards),layout=handLayout(cards.length);
+    cards.forEach((c,i)=>{const x=layout.left+i*layout.step,y=layout.top-(c.selected?12:0);this.card(c,x,y,layout.width,layout.height);
+      if(this.groups){const n=this.groups.findIndex(g=>g.ids.includes(c.id));this.box(x+1,y+layout.height-4,layout.width-2,3,n%2?C.blue:C.gold);this.text(String(n+1),x+5,y+layout.height-13,11,C.bg);}
+      this.hits.push({x,y,w:layout.width,h:layout.height,card:c.id,run:()=>{}});});
     if(vm.ended){this.hits=[];this.box(215,102,530,364,C.panel);this.text(`${room.settlement?.winner} 队获胜 · 升 ${room.settlement?.upgrade} 级`,245,139,28,C.gold);
       vm.ranking.forEach((r,i)=>this.text(`${r.place}   ${r.name.slice(0,12)}   ${r.team} 队`,250,184+i*32,18));
       this.button(room.status==='finished'?'整场结束':'下一局',245,408,220,()=>this.act({type:'next'}),online&&vm.host&&room.status==='settlement',true);
       this.button('返回大厅',487,408,220,()=>this.leave());}
   }
-  private card(c:{label:string;symbol:string;red:boolean;wild:boolean;selected?:boolean},x:number,y:number,w:number,h:number){this.box(x,y,w,h,c.selected?'#ffe1a0':'#fff9eb');this.text(c.label+c.symbol,x+4,y+15,19,c.red?'#bc3434':'#163f39');if(c.wild)this.text('配',x+4,y+h-9,11,'#9b630c');}
+  private card(c:{label:string;symbol:string;red:boolean;wild:boolean;selected?:boolean},x:number,y:number,w:number,h:number){
+    const ink=c.red?'#bc3434':'#182a27';this.box(x,y,w,h,'#b7b3a8');this.box(x+1,y+1,w-2,h-2,c.selected?'#ffe1a0':'#fffdf5');
+    if(c.label==='大'||c.label==='小'){
+      const step=Math.min(16,(h-12)/5);[...'JOKER'].forEach((letter,i)=>this.text(letter,x+5,y+10+i*step,Math.min(19,step+2),ink));
+    }else{
+      this.text(c.label,x+4,y+(h>80?19:14),h>80?(c.label==='10'?22:28):20,ink);
+      this.text(c.symbol,x+4,y+(h>80?47:35),h>80?25:19,ink);
+      if(h>80)this.text(c.symbol,x+w-43,y+h-28,42,ink);
+    }
+    if(c.wild)this.text('配',x+5,y+h-25,11,'#9b630c');
+  }
   private drawArrangement(){const room=this.room!,groups=this.groups!;this.hits=this.hits.filter(h=>h.card);
     this.box(210,94,530,216,C.panel);const pages=Math.max(1,Math.ceil(groups.length/3));this.groupPage=Math.min(this.groupPage,pages-1);
     this.text(`手牌分组 ${this.groupPage+1}/${pages}`,225,119,22,C.gold);

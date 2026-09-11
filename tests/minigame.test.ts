@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {build} from 'esbuild';
-import {viewport,hitAt} from '../game-src/layout';
+import {viewport,hitAt,handLayout} from '../game-src/layout';
 import {createRoom,addPlayer,applyAction,getRoomView} from '../server/game';
 import {findHints} from '../shared/cards';
 import {handRows,validReturnCards} from '../miniprogram/utils/presentation';
@@ -61,7 +61,8 @@ test('game boots without DOM, Page or App and guest can accept a shared invitati
 test('game selects cards, submits server hints and recovers foreground snapshot',async()=>{
   const h=harness(true);h.click('体验一局 · 五位机器人');await h.flush();
   for(const p of h.state.players)applyAction(h.state,p.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});h.state.currentTurnSeat=1;h.publish();
-  h.events.TouchStart({touches:[{clientX:30,clientY:410}]});h.events.TouchMove({touches:[{clientX:90,clientY:410}]});h.events.TouchEnd();
+  const layout=handLayout(27);
+  h.events.TouchStart({touches:[{clientX:layout.left+5,clientY:410}]});h.events.TouchMove({touches:[{clientX:layout.left+layout.step+5,clientY:410}]});h.events.TouchEnd();
   assert.ok(h.texts().some(t=>t.s.includes('已选 2 张')||t.s.includes('所选牌型无效')));
   h.click('清空');h.click('提示');await h.flush();h.click('出牌');await h.flush();
   assert.equal(h.actions.at(-1)?.type,'play');assert.ok(h.state.players[0].hand.length<27);
@@ -90,7 +91,8 @@ test('game requires a valid return card and can continue from settlement',async(
   const valid=validReturnCards(h.state.players[0].hand,h.state.currentLevel)[0];
   const rows=handRows(h.state.players[0].hand,h.state.currentLevel,[],'rank');
   const row=rows.findIndex(r=>r.cards.some(c=>c.id===valid.id)),column=rows[row].cards.findIndex(c=>c.id===valid.id);
-  h.events.TouchStart({touches:[{clientX:30+column*61,clientY:410+row*45}]});h.events.TouchEnd();
+  const layout=handLayout(h.state.players[0].hand.length);
+  h.events.TouchStart({touches:[{clientX:layout.left+(row*14+column)*layout.step+5,clientY:410}]});h.events.TouchEnd();
   h.click('确认还贡');await h.flush();assert.equal(h.actions.at(-1)?.type,'tribute');assert.equal(h.state.tribute[0].returned,true);
   h.state.status='settlement';h.state.settlement={order:[1,3,5,2,4,6],winner:'A',upgrade:3,fromLevel:'2',toLevel:'5',sweep:true,matchOver:false,reason:'test',biggestBomb:0};h.state.revision++;h.publish();
   assert.ok(h.texts().some(t=>t.s.includes('A 队获胜')));h.click('下一局');await h.flush();assert.equal(h.actions.at(-1)?.type,'next');assert.equal(h.state.round,2);

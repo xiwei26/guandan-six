@@ -1,5 +1,9 @@
 export const WIDTH = 960;
 export const HEIGHT = 540;
+export function handLayout(count:number){
+  const width=90,height=108,step=count>1?Math.min(48,(912-width)/(count-1)):0;
+  return {width,height,step,left:(WIDTH-width-Math.max(0,count-1)*step)/2,top:376};
+}
 export type Hit = {x:number;y:number;w:number;h:number;run:()=>void;card?:string};
 export function viewport(width:number,height:number,safe?:{left:number;top:number;right:number;bottom:number}) {
   const left=safe?.left??0,top=safe?.top??0;
