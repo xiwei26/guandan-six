@@ -10,6 +10,12 @@ export function viewport(width:number,height:number,safe?:{left:number;top:numbe
   const scale=Math.min(((safe?.right??width)-left)/WIDTH,((safe?.bottom??height)-top)/HEIGHT);
   return {scale,x:left+(((safe?.right??width)-left)-WIDTH*scale)/2,y:top+(((safe?.bottom??height)-top)-HEIGHT*scale)/2};
 }
+/** Extra room for the lobby columns, without stretching text or card faces. */
+export function lobbySpread(width:number,height:number,safe?:{left:number;top:number;right:number;bottom:number}) {
+  const view=viewport(width,height,safe);
+  const available=(safe?.right??width)-(safe?.left??0);
+  return Math.min(100,Math.max(0,(available/view.scale-WIDTH)/2))*.65;
+}
 export function hitAt(hits:Hit[],x:number,y:number) {
   return [...hits].reverse().find(h=>x>=h.x&&x<=h.x+h.w&&y>=h.y&&y<=h.y+h.h);
 }

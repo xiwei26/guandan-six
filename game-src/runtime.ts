@@ -3,7 +3,7 @@ import { RoomConnection, type ConnectionState } from '../miniprogram/services/co
 import { tableView, DEFAULT_OPTIONS, cardView } from '../miniprogram/utils/presentation';
 import {arrangeHand,reconcileGroups,manualGroup,groupCards,type HandGroup} from './arrangement';
 import type { RoomView, GameAction, RuleConfig } from '../shared/types';
-import { WIDTH, HEIGHT, viewport, hitAt, handLayout, type Hit } from './layout';
+import { WIDTH, HEIGHT, viewport, hitAt, handLayout, lobbySpread, type Hit } from './layout';
 import { Painter, COLORS as C } from './paint';
 
 type TouchEvent={touches:{clientX:number;clientY:number}[]};
@@ -43,6 +43,9 @@ export class GuandanGame {
   private paint:Painter;
   private paper=false;
   private view=viewport(WIDTH,HEIGHT);
+  private background={x:0,y:0,w:WIDTH,h:HEIGHT};
+  private spread=0;
+  private hitOffset=0;
   private hits:Hit[]=[];
   private room:RoomView|null=null;
   private connection?:RoomConnection;
@@ -88,6 +91,8 @@ export class GuandanGame {
   private resize(){const info=this.platform.getSystemInfoSync();const dpr=Math.min(info.pixelRatio||1,3);
     this.canvas.width=Math.round(info.windowWidth*dpr);this.canvas.height=Math.round(info.windowHeight*dpr);
     this.view=viewport(info.windowWidth,info.windowHeight,info.safeArea);
+    this.spread=lobbySpread(info.windowWidth,info.windowHeight,info.safeArea);
+    this.background={x:-this.view.x/this.view.scale,y:-this.view.y/this.view.scale,w:info.windowWidth/this.view.scale,h:info.windowHeight/this.view.scale};
     this.ctx.setTransform(dpr*this.view.scale,0,0,dpr*this.view.scale,dpr*this.view.x,dpr*this.view.y);this.draw();}
   private text(s:string,x:number,y:number,size=18,color:string=this.paper?C.ink:C.text){this.paint.text(s,x,y,size,color);}
   private box(x:number,y:number,w:number,h:number,color:string){this.paint.rect(x,y,w,h,color,Math.min(12,h/3));}
@@ -95,7 +100,7 @@ export class GuandanGame {
     const fill=primary?C.gold:this.paper?C.soft:C.panel;
     this.paint.rect(x,y,w,40,enabled?fill:this.paper?'#eeebe1':'#203e38',8,primary?'#f0d7a3':this.paper?'#d9decf':C.line);
     this.paint.text(label,x+12,y+20,16,enabled?(primary||this.paper?C.ink:C.text):this.paper?'#8a9383':'#80968b',primary?600:400,'sans-serif',w-24);
-    if(enabled&&!this.busy)this.hits.push({x,y,w,h:40,run});
+    if(enabled&&!this.busy)this.hits.push({x:x+this.hitOffset,y,w,h:40,run});
   }
   private touch(e:TouchEvent,moving:boolean){if(this.busy||this.editing)return;const t=e.touches[0];if(!t)return;
     const h=hitAt(this.hits,(t.clientX-this.view.x)/this.view.scale,(t.clientY-this.view.y)/this.view.scale);
@@ -140,7 +145,7 @@ export class GuandanGame {
     ...history.flatMap(h=>[`${new Date(h.at).toLocaleDateString()} · 房间 ${h.roomId} · 第 ${h.round} 局 · ${h.winner} 队胜`,h.order.map((p,i)=>`${i+1}. ${p.nickname}`).join(' / ')])
   ]);});}
   draw(){if(!this.ctx||!this.visible)return;this.hits=[];this.ctx.save();this.ctx.setTransform(1,0,0,1,0,0);this.ctx.fillStyle=C.bg;this.ctx.fillRect(0,0,this.canvas.width,this.canvas.height);this.ctx.restore();
-    this.paper=false;this.paint.backdrop();
+    this.paper=false;this.hitOffset=0;const b=this.background;this.paint.backdrop(b.x,b.y,b.w,b.h);
     if(this.room)this.table();else this.lobby();
     if(this.arranging&&this.room&&!['settlement','finished','waiting'].includes(this.room.status))this.drawArrangement();
     if(this.overlay)this.drawPanel();
@@ -149,6 +154,7 @@ export class GuandanGame {
     if(this.busy){this.paint.scrim();this.paint.paperPanel(380,235,200,60);this.text('正在处理…',420,266,20,C.ink);this.hits=[];}
   }
   private lobby(){
+    this.ctx.save();this.ctx.translate(-this.spread,0);this.hitOffset=-this.spread;
     this.paint.suit('♣',56,34,25,C.gold);this.text('好友相聚，开一局',94,48,14,C.muted);
     this.paint.text('六人掼蛋',56,128,54,C.text,600,'"Songti SC", SimSun, serif');
     this.text('三副牌 · 六人同桌 · 隔位组队',60,180,18,C.muted);
@@ -156,6 +162,8 @@ export class GuandanGame {
     this.button('规则',56,454,106,()=>this.panel('六人规则 · 6P_V2',RULES));
     this.button('连接设置',176,454,132,()=>this.settings());
     const session=this.api.session();this.button('我的战绩',322,454,132,()=>this.history(),!!session);
+    this.text('六人掼蛋 / 微信小游戏',56,519,12,C.muted);
+    this.ctx.restore();this.ctx.save();this.ctx.translate(this.spread,0);this.hitOffset=this.spread;
     this.paint.paperPanel(560,76,344,418);this.paper=true;
     this.paint.text(session?`你好，${session.nickname}`:'好搭档，就等你了',584,112,23,C.ink,600,'sans-serif',296);
     if(!session){
@@ -175,8 +183,9 @@ export class GuandanGame {
       this.button(`计时：${this.options.turnSeconds||'不限'}${this.options.turnSeconds?'秒':''}`,738,358,142,()=>{const list=[0,15,30,60] as const;this.options.turnSeconds=list[(list.indexOf(this.options.turnSeconds!)+1)%list.length];this.draw();});
       this.button('更多房间设置',584,425,296,()=>this.roomOptions());
     }
-    this.paper=false;this.text('六人掼蛋 / 微信小游戏',56,519,12,C.muted);
+    this.paper=false;
     this.text('三人一队 · 六人开掼',745,519,12,C.muted);
+    this.ctx.restore();this.hitOffset=0;
   }
   private roomOptions(){this.configuring=true;this.draw();}
   private drawOptions(){this.hits=[];this.paint.scrim();this.paint.paperPanel(220,80,520,390);this.paper=true;this.text('房间设置',250,118,28,C.ink);

@@ -6,6 +6,7 @@ export const COLORS = {
 };
 
 export class Painter {
+  private bounds={x:0,y:0,w:960,h:540};
   constructor(private ctx:CanvasRenderingContext2D) {}
 
   text(value:string,x:number,y:number,size=18,color:string=COLORS.text,weight=400,family='sans-serif',maxWidth?:number) {
@@ -66,14 +67,14 @@ export class Painter {
     c.restore();
   }
 
-  backdrop() {
+  backdrop(x=0,y=0,w=960,h=540) {
+    this.bounds={x,y,w,h};
     const c=this.ctx;c.save();
-    const wash=c.createLinearGradient(0,0,960,540);wash.addColorStop(0,'#17493d');wash.addColorStop(.55,'#103a32');wash.addColorStop(1,COLORS.bg);
-    c.fillStyle=wash;c.fillRect(0,0,960,540);c.restore();
-    this.rect(12,12,936,516,'transparent',20,'#ffffff0b');
+    const wash=c.createLinearGradient(x,y,x+w,y+h);wash.addColorStop(0,'#17493d');wash.addColorStop(.55,'#103a32');wash.addColorStop(1,COLORS.bg);
+    c.fillStyle=wash;c.fillRect(x,y,w,h);c.restore();
   }
 
-  scrim() {const c=this.ctx;c.save();c.fillStyle='#041c18b8';c.fillRect(0,0,960,540);c.restore();}
+  scrim() {const c=this.ctx,b=this.bounds;c.save();c.fillStyle='#041c18b8';c.fillRect(b.x,b.y,b.w,b.h);c.restore();}
 
   paperPanel(x:number,y:number,w:number,h:number) {
     const c=this.ctx;c.save();c.shadowColor='#00181055';c.shadowBlur=30;c.shadowOffsetY=10;

@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {build} from 'esbuild';
-import {viewport,hitAt,handLayout} from '../game-src/layout';
+import {viewport,hitAt,handLayout,lobbySpread} from '../game-src/layout';
 import {createRoom,addPlayer,applyAction,getRoomView} from '../server/game';
 import {findHints} from '../shared/cards';
 import {handRows,validReturnCards} from '../miniprogram/utils/presentation';
 import type {GameAction} from '../shared/types';
 
-function harness(loggedIn=false){
+function harness(loggedIn=false,screen={windowWidth:960,windowHeight:540,pixelRatio:1} as {windowWidth:number;windowHeight:number;pixelRatio:number;safeArea?:{left:number;top:number;right:number;bottom:number}}){
   const events:Record<string,(value?:any)=>any>={};
   let texts:{s:string;x:number;y:number}[]=[];
   const storage=new Map<string,unknown>();
@@ -27,7 +27,7 @@ function harness(loggedIn=false){
     fillRect(x:number,y:number,w:number){if(x===0&&y===0&&w===960)texts=[];},fillText(s:string,x:number,y:number){texts.push({s,x,y});},
     measureText(s:string){const size=Number(this.font.match(/([\d.]+)px/)?.[1]??18);return {width:[...s].reduce((width,c)=>width+size*(c.charCodeAt(0)>255?1:.55),0)};}};
   const canvas={width:960,height:540,getContext:()=>ctx};
-  const wx:any={createCanvas:()=>canvas,getSystemInfoSync:()=>({windowWidth:960,windowHeight:540,pixelRatio:1}),
+  const wx:any={createCanvas:()=>canvas,getSystemInfoSync:()=>screen,
     getStorageSync:(k:string)=>storage.get(k),setStorageSync:(k:string,v:unknown)=>storage.set(k,v),removeStorageSync:(k:string)=>storage.delete(k),
     getAccountInfoSync:()=>({miniProgram:{envVersion:'develop'}}),getLaunchOptionsSync:()=>({query:{room:'123456'}}),showShareMenu(){},
     shareAppMessage(o:any){events.shared?.(o);},showModal(o:any){errors.push(o.content);},showToast(){},hideKeyboard(){},showKeyboard(){},
@@ -84,6 +84,21 @@ test('game maps safe-area touch coordinates and chooses the topmost card',()=>{
   const v=viewport(844,390,{left:44,top:0,right:800,bottom:369});assert.ok(v.x>=44);assert.ok(v.x+960*v.scale<=800);
   const hits=[{x:0,y:0,w:58,h:44,card:'a',run(){}},{x:0,y:30,w:58,h:44,card:'b',run(){}}];
   assert.equal(hitAt(hits,12,35)?.card,'b');assert.equal(hitAt(hits,-1,35),undefined);
+});
+
+test('wide lobby stays inside the safe area and translated buttons remain clickable',async()=>{
+  assert.equal(lobbySpread(960,540),0);
+  for(const width of [844,932,1200]) {
+    const screen={windowWidth:width,windowHeight:390,pixelRatio:2,safeArea:{left:44,top:0,right:width-44,bottom:369}};
+    const v=viewport(width,390,screen.safeArea),spread=lobbySpread(width,390,screen.safeArea);
+    assert.ok(spread>0&&spread<=65);
+    assert.ok(v.x+(56-spread)*v.scale>=44);
+    assert.ok(v.x+(904+spread)*v.scale<=width-44);
+    const h=harness(true,screen);
+    h.events.TouchStart({touches:[{clientX:v.x+(600+spread)*v.scale,clientY:v.y+166*v.scale}]});h.events.TouchEnd();await h.flush();
+    assert.ok(h.requests.some(r=>r.url.endsWith('/api/rooms')&&r.data.rules),'wide create button must submit room configuration');
+    h.events.Hide();
+  }
 });
 
 test('game requires a valid return card and can continue from settlement',async()=>{
