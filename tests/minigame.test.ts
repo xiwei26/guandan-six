@@ -22,7 +22,10 @@ function harness(loggedIn=false){
   const sockets:{closed:boolean;message?:(e:{data:string})=>void}[]=[];
   const errors:string[]=[];
   const timers=new Set<unknown>();
-  const ctx={setTransform(){},save(){},restore(){},fillRect(x:number,y:number,w:number){if(x===0&&y===0&&w===960)texts=[];},fillText(s:string,x:number,y:number){texts.push({s,x,y});},measureText(s:string){return {width:s.length*18};}};
+  const ctx={font:'18px sans-serif',setTransform(){},save(){},restore(){},beginPath(){},closePath(){},moveTo(){},lineTo(){},quadraticCurveTo(){},bezierCurveTo(){},fill(){},stroke(){},ellipse(){},arc(){},translate(){},rotate(){},scale(){},
+    createLinearGradient(){return {addColorStop(){}};},
+    fillRect(x:number,y:number,w:number){if(x===0&&y===0&&w===960)texts=[];},fillText(s:string,x:number,y:number){texts.push({s,x,y});},
+    measureText(s:string){const size=Number(this.font.match(/([\d.]+)px/)?.[1]??18);return {width:[...s].reduce((width,c)=>width+size*(c.charCodeAt(0)>255?1:.55),0)};}};
   const canvas={width:960,height:540,getContext:()=>ctx};
   const wx:any={createCanvas:()=>canvas,getSystemInfoSync:()=>({windowWidth:960,windowHeight:540,pixelRatio:1}),
     getStorageSync:(k:string)=>storage.get(k),setStorageSync:(k:string,v:unknown)=>storage.set(k,v),removeStorageSync:(k:string)=>storage.delete(k),

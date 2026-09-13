@@ -4,6 +4,7 @@ import { tableView, DEFAULT_OPTIONS, cardView } from '../miniprogram/utils/prese
 import {arrangeHand,reconcileGroups,manualGroup,groupCards,type HandGroup} from './arrangement';
 import type { RoomView, GameAction, RuleConfig } from '../shared/types';
 import { WIDTH, HEIGHT, viewport, hitAt, handLayout, type Hit } from './layout';
+import { Painter, COLORS as C } from './paint';
 
 type TouchEvent={touches:{clientX:number;clientY:number}[]};
 type Launch={query?:Record<string,string>};
@@ -23,7 +24,6 @@ export type GamePlatform=Pick<typeof wx,'request'|'login'|'getStorageSync'|'setS
   onKeyboardComplete(fn:(e:{value:string})=>void):void;
 };
 
-const C={bg:'#082d29',panel:'#12443c',line:'#326258',text:'#f5f0df',muted:'#afc7bb',gold:'#e9bd66',blue:'#8dc9ef',orange:'#f0a96e'};
 const RULES=[
   '六人同桌，A / B 隔位组队；三副牌，每人 27 张。六人准备后由房主开始。',
   '大王 > 小王 > 级牌 > A 至 2。红桃级牌为逢人配，可以替普通牌，不能替王。',
@@ -40,6 +40,8 @@ export class GuandanGame {
   readonly api:MiniClient;
   readonly canvas:HTMLCanvasElement;
   private ctx:CanvasRenderingContext2D;
+  private paint:Painter;
+  private paper=false;
   private view=viewport(WIDTH,HEIGHT);
   private hits:Hit[]=[];
   private room:RoomView|null=null;
@@ -66,7 +68,7 @@ export class GuandanGame {
   private swapping=false;
   constructor(private platform:GamePlatform) {
     this.api=new MiniClient(platform);this.nickname=this.api.session()?.nickname||'牌友';
-    this.canvas=platform.createCanvas();this.ctx=this.canvas.getContext('2d')!;
+    this.canvas=platform.createCanvas();this.ctx=this.canvas.getContext('2d')!;this.paint=new Painter(this.ctx);
     this.resize();
     platform.onWindowResize(()=>this.resize());
     platform.onTouchStart(e=>this.touch(e,false));platform.onTouchMove(e=>this.touch(e,true));
@@ -87,10 +89,12 @@ export class GuandanGame {
     this.canvas.width=Math.round(info.windowWidth*dpr);this.canvas.height=Math.round(info.windowHeight*dpr);
     this.view=viewport(info.windowWidth,info.windowHeight,info.safeArea);
     this.ctx.setTransform(dpr*this.view.scale,0,0,dpr*this.view.scale,dpr*this.view.x,dpr*this.view.y);this.draw();}
-  private text(s:string,x:number,y:number,size=18,color=C.text){this.ctx.fillStyle=color;this.ctx.font=`${size}px sans-serif`;this.ctx.textBaseline='middle';this.ctx.fillText(s,x,y);}
-  private box(x:number,y:number,w:number,h:number,color:string){this.ctx.fillStyle=color;this.ctx.fillRect(x,y,w,h);}
+  private text(s:string,x:number,y:number,size=18,color:string=this.paper?C.ink:C.text){this.paint.text(s,x,y,size,color);}
+  private box(x:number,y:number,w:number,h:number,color:string){this.paint.rect(x,y,w,h,color,Math.min(12,h/3));}
   private button(label:string,x:number,y:number,w:number,run:()=>void,enabled=true,primary=false){
-    this.box(x,y,w,40,enabled?(primary?C.gold:C.panel):'#203e38');this.text(label,x+12,y+20,17,enabled?(primary?C.bg:C.text):'#718a7f');
+    const fill=primary?C.gold:this.paper?C.soft:C.panel;
+    this.paint.rect(x,y,w,40,enabled?fill:this.paper?'#eeebe1':'#203e38',8,primary?'#f0d7a3':this.paper?'#d9decf':C.line);
+    this.paint.text(label,x+12,y+20,16,enabled?(primary||this.paper?C.ink:C.text):this.paper?'#8a9383':'#80968b',primary?600:400,'sans-serif',w-24);
     if(enabled&&!this.busy)this.hits.push({x,y,w,h:40,run});
   }
   private touch(e:TouchEvent,moving:boolean){if(this.busy||this.editing)return;const t=e.touches[0];if(!t)return;
@@ -136,48 +140,72 @@ export class GuandanGame {
     ...history.flatMap(h=>[`${new Date(h.at).toLocaleDateString()} · 房间 ${h.roomId} · 第 ${h.round} 局 · ${h.winner} 队胜`,h.order.map((p,i)=>`${i+1}. ${p.nickname}`).join(' / ')])
   ]);});}
   draw(){if(!this.ctx||!this.visible)return;this.hits=[];this.ctx.save();this.ctx.setTransform(1,0,0,1,0,0);this.ctx.fillStyle=C.bg;this.ctx.fillRect(0,0,this.canvas.width,this.canvas.height);this.ctx.restore();
+    this.paper=false;this.paint.backdrop();
     if(this.room)this.table();else this.lobby();
     if(this.arranging&&this.room&&!['settlement','finished','waiting'].includes(this.room.status))this.drawArrangement();
     if(this.overlay)this.drawPanel();
     if(this.configuring)this.drawOptions();
-    if(this.editing){this.box(180,180,600,120,C.panel);this.text(this.editing.title,210,220,24);this.text('输入后点击键盘「完成」',210,265,18,C.muted);this.hits=[];}
-    if(this.busy){this.box(380,235,200,60,C.panel);this.text('正在处理…',420,266,20);this.hits=[];}
+    if(this.editing){this.paint.scrim();this.paint.paperPanel(180,180,600,120);this.text(this.editing.title,210,220,24,C.ink);this.text('输入后点击键盘「完成」',210,265,18,C.paperMuted);this.hits=[];}
+    if(this.busy){this.paint.scrim();this.paint.paperPanel(380,235,200,60);this.text('正在处理…',420,266,20,C.ink);this.hits=[];}
   }
-  private lobby(){this.text('六人掼蛋',64,112,58);this.text('三副牌 · 六人同桌 · 隔位组队',68,170,21,C.muted);
-    this.text('A',80,275,58,C.blue);this.text('B',150,275,58,C.orange);this.text('A',220,275,58,C.blue);this.text('B',290,275,58,C.orange);this.text('A',360,275,58,C.blue);this.text('B',430,275,58,C.orange);
-    this.text('27 张手牌，和队友一起打到 A。',68,345,22);
-    this.button('规则',68,425,110,()=>this.panel('六人规则 · 6P_V2',RULES));this.button('连接设置',194,425,130,()=>this.settings());
-    const session=this.api.session();this.button('我的战绩',340,425,130,()=>this.history(),!!session);
-    this.text(session?`你好，${session.nickname}`:'选择身份进入牌桌',580,92,25);
-    if(!session){this.button(`昵称：${this.nickname}`,580,132,300,()=>this.input('昵称',this.nickname,s=>{if(!s||s.length>20)throw new Error('昵称为 1–20 字');this.nickname=s;},20));
-      this.button('微信登录',580,198,300,()=>void this.login('wechat'),true,true);this.button('游客体验',580,254,300,()=>void this.login('guest'));
-      if(this.invite)this.text(`好友邀请：房间 ${this.invite}`,580,330,20,C.gold);
-    }else{this.button('创建房间',580,132,300,()=>this.enter('create'),true,true);
-      this.button(this.invite?`加入邀请 ${this.invite}`:'输入房间号加入',580,188,300,()=>this.invite?this.enter('join',this.invite):this.input('六位房间号','',s=>this.enter('join',s),6));
-      this.button('体验一局 · 五位机器人',580,244,300,()=>this.enter('demo'));
-      this.button('返回上次房间',580,300,300,()=>void this.restore(this.api.roomId()),!!this.api.roomId());
-      this.button(`局数：${this.options.rounds==='A'?'打到 A':this.options.rounds}`,580,362,144,()=>{const list=[1,2,4,8,'A'] as const;this.options.rounds=list[(list.indexOf(this.options.rounds!)+1)%list.length];this.draw();});
-      this.button(`计时：${this.options.turnSeconds||'不限'}${this.options.turnSeconds?'秒':''}`,736,362,144,()=>{const list=[0,15,30,60] as const;this.options.turnSeconds=list[(list.indexOf(this.options.turnSeconds!)+1)%list.length];this.draw();});
-      this.button('更多房间设置',580,418,300,()=>this.roomOptions());
-    }this.text('六人掼蛋 / 微信小游戏',68,510,14,C.muted);
+  private lobby(){
+    this.paint.suit('♣',56,34,25,C.gold);this.text('好友相聚，开一局',94,48,14,C.muted);
+    this.paint.text('六人掼蛋',56,128,54,C.text,600,'"Songti SC", SimSun, serif');
+    this.text('三副牌 · 六人同桌 · 隔位组队',60,180,18,C.muted);
+    this.paint.lobbyArt();this.text('27 张手牌，和队友一起打到 A。',108,410,17,C.muted);
+    this.button('规则',56,454,106,()=>this.panel('六人规则 · 6P_V2',RULES));
+    this.button('连接设置',176,454,132,()=>this.settings());
+    const session=this.api.session();this.button('我的战绩',322,454,132,()=>this.history(),!!session);
+    this.paint.paperPanel(560,76,344,418);this.paper=true;
+    this.paint.text(session?`你好，${session.nickname}`:'好搭档，就等你了',584,112,23,C.ink,600,'sans-serif',296);
+    if(!session){
+      this.text('选一个名字，坐上你的牌桌。',584,149,14,C.paperMuted);
+      this.button(`昵称：${this.nickname}`,584,183,296,()=>this.input('昵称',this.nickname,s=>{if(!s||s.length>20)throw new Error('昵称为 1–20 字');this.nickname=s;},20));
+      this.button('微信登录',584,248,296,()=>void this.login('wechat'),true,true);this.paint.arrow(855,268);
+      this.button('游客体验',584,304,296,()=>void this.login('guest'));
+      this.paint.line(584,371,880,371,'#d9dece');
+      this.text(this.invite?`好友邀请：房间 ${this.invite}`:'六人入座，三人同心。',584,402,16,C.paperMuted);
+      this.text('三人一队，每个人都有好搭档。',584,433,14,C.paperMuted);
+    }else{
+      this.button('创建房间',584,146,296,()=>this.enter('create'),true,true);this.paint.arrow(855,166);
+      this.button(this.invite?`加入邀请 ${this.invite}`:'输入房间号加入',584,199,296,()=>this.invite?this.enter('join',this.invite):this.input('六位房间号','',s=>this.enter('join',s),6));
+      this.button('体验一局 · 五位机器人',584,252,296,()=>this.enter('demo'));
+      this.button('返回上次房间',584,305,296,()=>void this.restore(this.api.roomId()),!!this.api.roomId());
+      this.button(`局数：${this.options.rounds==='A'?'打到 A':this.options.rounds}`,584,358,142,()=>{const list=[1,2,4,8,'A'] as const;this.options.rounds=list[(list.indexOf(this.options.rounds!)+1)%list.length];this.draw();});
+      this.button(`计时：${this.options.turnSeconds||'不限'}${this.options.turnSeconds?'秒':''}`,738,358,142,()=>{const list=[0,15,30,60] as const;this.options.turnSeconds=list[(list.indexOf(this.options.turnSeconds!)+1)%list.length];this.draw();});
+      this.button('更多房间设置',584,425,296,()=>this.roomOptions());
+    }
+    this.paper=false;this.text('六人掼蛋 / 微信小游戏',56,519,12,C.muted);
+    this.text('三人一队 · 六人开掼',745,519,12,C.muted);
   }
   private roomOptions(){this.configuring=true;this.draw();}
-  private drawOptions(){this.hits=[];this.box(220,80,520,390,C.panel);this.text('房间设置',250,118,28,C.gold);
+  private drawOptions(){this.hits=[];this.paint.scrim();this.paint.paperPanel(220,80,520,390);this.paper=true;this.text('房间设置',250,118,28,C.ink);
     const toggles=[['showRemaining','显示剩余牌数'],['allowAutoPlay','允许托管'],['allowCounter','记牌器'],['resistance','抗贡']] as const;
     toggles.forEach(([key,label],i)=>this.button(`${label}：${this.options[key]?'开':'关'}`,250,154+i*54,460,()=>{this.options[key]=!this.options[key];this.draw();}));
     this.button('完成',250,402,460,()=>{this.configuring=false;this.draw();},true,true);
   }
   private table(){const room=this.room!,vm=tableView(room,this.selected,this.sort),online=this.state==='online';
-    this.text(`规则 ${room.rules.ruleVersion}${room.rules.ruleVersion==='6P_V1'?' · 旧版房间':''}`,24,68,15,C.muted);
-    this.text(`六人掼蛋  /  ${room.roomId}`,24,28,21);this.text(`第 ${room.round} 局 · 打 ${room.currentLevel}    A ${room.teamLevels.A} : B ${room.teamLevels.B}`,310,28,18,C.gold);
+    this.paint.suit('♣',24,16,24,C.gold);this.paint.text('六人掼蛋',58,29,22,C.text,600,'serif');
+    this.text(`好友房 ${room.roomId}`,181,29,16,C.muted);
+    this.text(`规则 ${room.rules.ruleVersion}${room.rules.ruleVersion==='6P_V1'?' · 旧版房间':''}`,24,68,13,C.muted);
+    this.paint.line(24,48,628,48);
+    this.text(`第 ${room.round} 局 · 打 ${room.currentLevel}`,354,28,17,C.gold);
+    this.text(`A ${room.teamLevels.A}`,529,28,18,C.blue);this.text(' / ',577,28,16,C.muted);this.text(`B ${room.teamLevels.B}`,602,28,18,C.orange);
+    this.paint.table();
     // Keep the upper-right corner clear for the native WeChat capsule menu.
     this.button('邀请',658,52,80,()=>this.platform.shareAppMessage(this.share()));this.button('大厅',746,52,80,()=>this.leave());
     this.button(online?'已连接':'重连',834,52,100,()=>void this.restore(room.roomId),!online);
-    const positions=[[420,286],[758,214],[758,100],[420,70],[28,100],[28,214]];
-    vm.seats.forEach(s=>{const [x,y]=positions[s.relative];this.box(x,y,174,72,s.active?'#366454':C.panel);this.box(x,y,4,72,s.team==='A'?C.blue:C.orange);
-      this.text(`${s.seat} · ${s.nickname.slice(0,9)}`,x+12,y+22,17,s.team==='A'?C.blue:C.orange);
-      this.text(`${s.offline?'离线 · ':''}${s.pass?'不出':s.detail}`,x+12,y+49,15,C.muted);
-      if(this.swapping)this.hits.push({x,y,w:174,h:72,run:()=>{if(!this.swapSeat){this.swapSeat=s.seat;this.draw();}else{this.act({type:'swap',seat:this.swapSeat,target:s.seat});this.swapping=false;this.swapSeat=0;}}});
+    const positions=[[424,300],[758,216],[758,106],[397,72],[28,106],[28,216]];
+    vm.seats.forEach(s=>{const [x,y]=positions[s.relative],own=s.relative===0,team=s.team==='A'?C.blue:C.orange,w=own?302:174,h=own?52:72;
+      this.paint.rect(x,y,w,h,s.active?'#2c5947':'#123d34',12,s.active||this.swapSeat===s.seat?C.gold:'#426759');
+      this.paint.rect(x+9,y+10,own?32:40,own?32:40,s.occupied?(s.team==='A'?'#294f53':'#574d39'):'#234a3d',10,team);
+      this.paint.text(s.initial,x+18,y+(own?26:30),own?18:23,team,500,'serif');
+      const labelX=x+(own?51:59);
+      this.paint.text(s.nickname,labelX,y+20,14,C.text,500,'sans-serif',own?112:105);
+      this.paint.text(`${s.offline?'离线 · ':''}${s.pass?'不出':s.detail}`,labelX,y+41,12,s.low?C.gold:C.muted,400,'sans-serif',own?112:107);
+      if(own)this.text(`${s.team} 队 · 你的座位`,x+181,y+26,13,team);
+      else {this.text(`${s.team}队`,x+13,y+61,10,team);if(s.host)this.text('房主',x+125,y+61,10,C.gold);}
+      if(this.swapping)this.hits.push({x,y,w,h,run:()=>{if(!this.swapSeat){this.swapSeat=s.seat;this.draw();}else{this.act({type:'swap',seat:this.swapSeat,target:s.seat});this.swapping=false;this.swapSeat=0;}}});
     });
     if(vm.waiting){this.text('等待六位牌友准备',318,185,28);this.text(`${vm.readyCount} / 6 已准备 · ${vm.roundText} · 隔位组队`,318,224,18,C.muted);
       this.button(vm.me.ready?'取消准备':'准备',272,258,140,()=>this.act({type:'ready',ready:!vm.me.ready}),online,true);
@@ -186,9 +214,9 @@ export class GuandanGame {
       this.button(this.swapping?`换座 ${this.swapSeat||'选座'}`:'调整座位',28,410,165,()=>{this.swapping=!this.swapping;this.swapSeat=0;this.draw();},online&&vm.host);
       this.text('点击右上角邀请好友，或分享六位房间号。',245,453,20,C.muted);return;
     }
-    this.text(vm.turnLabel,295,174,23,C.gold);
+    this.paint.rect(289,151,382,38,'#0d372d',19,'#517660');this.paint.text(vm.turnLabel,306,170,20,C.gold,500,'sans-serif',250);
     const seconds=room.deadline===null?'不限时':`${Math.max(0,Math.ceil((room.deadline-Date.now())/1000))} 秒`;
-    this.text(seconds,590,174,19,C.muted);
+    this.text(seconds,601,170,16,C.muted);
     if(vm.played.length){this.text(vm.lastLabel.slice(0,26),295,206,16,C.muted);vm.played.forEach((c,i)=>this.card(c,295+i*Math.min(30,350/Math.max(1,vm.played.length-1)),223,42,63));}
     else this.text(vm.tribute?'请完成贡还贡':'等待首出',338,244,24,C.muted);
     this.button(this.sort==='rank'?'按花色':'按点数',24,320,106,()=>{this.sort=this.sort==='rank'?'suit':'rank';this.groups=null;this.arranging=false;this.draw();});
@@ -201,31 +229,24 @@ export class GuandanGame {
       this.button('交换进度',660,488,130,()=>this.panel('贡还贡',vm.exchanges.map(e=>`${e.fromName} → ${e.toName}：${e.label}`)));
     }else{this.button('提示',490,488,100,()=>this.hint(),online&&vm.mine);this.button('不出',602,488,100,()=>this.act({type:'pass'}),online&&vm.canPass);
       this.button('出牌',714,488,130,()=>this.act({type:'play',cardIds:[...this.selected]}),online&&vm.canPlay,true);}
-    this.text(vm.selectionText.slice(0,27),24,510,16,C.muted);
+    this.paint.line(24,366,936,366);this.paint.text(vm.selectionText,24,510,15,C.muted,400,'sans-serif',450);
     const ordered=this.groups?this.groups.flatMap(g=>g.ids).map(id=>room.hand.find(c=>c.id===id)!).filter(Boolean).map(c=>cardView(c,room.currentLevel,this.selected)):null;
     const cards=ordered??vm.rows.flatMap(r=>r.cards),layout=handLayout(cards.length);
     cards.forEach((c,i)=>{const x=layout.left+i*layout.step,y=layout.top-(c.selected?12:0);this.card(c,x,y,layout.width,layout.height);
       if(this.groups){const n=this.groups.findIndex(g=>g.ids.includes(c.id));this.box(x+1,y+layout.height-4,layout.width-2,3,n%2?C.blue:C.gold);this.text(String(n+1),x+5,y+layout.height-13,11,C.bg);}
       this.hits.push({x,y,w:layout.width,h:layout.height,card:c.id,run:()=>{}});});
-    if(vm.ended){this.hits=[];this.box(215,102,530,364,C.panel);this.text(`${room.settlement?.winner} 队获胜 · 升 ${room.settlement?.upgrade} 级`,245,139,28,C.gold);
+    if(vm.ended){this.hits=[];this.paint.scrim();this.paint.paperPanel(215,102,530,364);this.paper=true;this.text(`${room.settlement?.winner} 队获胜 · 升 ${room.settlement?.upgrade} 级`,245,139,28,C.ink);
       vm.ranking.forEach((r,i)=>this.text(`${r.place}   ${r.name.slice(0,12)}   ${r.team} 队`,250,184+i*32,18));
       this.button(room.status==='finished'?'整场结束':'下一局',245,408,220,()=>this.act({type:'next'}),online&&vm.host&&room.status==='settlement',true);
       this.button('返回大厅',487,408,220,()=>this.leave());}
   }
   private card(c:{label:string;symbol:string;red:boolean;wild:boolean;selected?:boolean},x:number,y:number,w:number,h:number){
-    const ink=c.red?'#bc3434':'#182a27';this.box(x,y,w,h,'#b7b3a8');this.box(x+1,y+1,w-2,h-2,c.selected?'#ffe1a0':'#fffdf5');
-    if(c.label==='大'||c.label==='小'){
-      const step=Math.min(16,(h-12)/5);[...'JOKER'].forEach((letter,i)=>this.text(letter,x+5,y+10+i*step,Math.min(19,step+2),ink));
-    }else{
-      this.text(c.label,x+4,y+(h>80?19:14),h>80?(c.label==='10'?22:28):20,ink);
-      this.text(c.symbol,x+4,y+(h>80?47:35),h>80?25:19,ink);
-      if(h>80)this.text(c.symbol,x+w-43,y+h-28,42,ink);
-    }
-    if(c.wild)this.text('配',x+5,y+h-25,11,'#9b630c');
+    this.paint.card(c,x,y,w,h);
   }
   private drawArrangement(){const room=this.room!,groups=this.groups!;this.hits=this.hits.filter(h=>h.card);
-    this.box(210,94,530,216,C.panel);const pages=Math.max(1,Math.ceil(groups.length/3));this.groupPage=Math.min(this.groupPage,pages-1);
-    this.text(`手牌分组 ${this.groupPage+1}/${pages}`,225,119,22,C.gold);
+    // The hand remains visible and interactive while the table is covered.
+    this.paint.paperPanel(210,94,530,216);this.paper=true;const pages=Math.max(1,Math.ceil(groups.length/3));this.groupPage=Math.min(this.groupPage,pages-1);
+    this.text(`手牌分组 ${this.groupPage+1}/${pages}`,225,119,22,C.ink);
     this.button('上页',566,98,76,()=>{this.groupPage--;this.draw();},this.groupPage>0);this.button('下页',650,98,76,()=>{this.groupPage++;this.draw();},this.groupPage<pages-1);
     groups.slice(this.groupPage*3,this.groupPage*3+3).forEach((g,i)=>{const index=this.groupPage*3+i,y=144+i*41;
       this.button(`${index+1}. ${g.label} · ${g.ids.length}张`,224,y,222,()=>{this.selected=[...g.ids];this.draw();});
@@ -237,9 +258,9 @@ export class GuandanGame {
     this.button('重新自动理牌',378,268,174,()=>{this.groups=arrangeHand(room.hand,room.currentLevel,room.rules);this.selected=[];this.groupPage=0;this.draw();});
     this.button('完成',622,268,104,()=>{this.arranging=false;this.draw();},true,true);
   }
-  private drawPanel(){const p=this.overlay!;this.hits=[];this.box(105,64,750,430,C.panel);this.text(p.title,132,99,27,C.gold);
+  private drawPanel(){const p=this.overlay!;this.hits=[];this.paint.scrim();this.paint.paperPanel(105,64,750,430);this.paper=true;this.text(p.title,132,99,27,C.ink);
     const lines:string[]=[];for(const line of p.lines){let part='';for(const ch of line){this.ctx.font='18px sans-serif';if(this.ctx.measureText(part+ch).width>685){lines.push(part);part=ch;}else part+=ch;}lines.push(part);}
     const pages=Math.max(1,Math.ceil(lines.length/8));p.page=Math.min(p.page,pages-1);lines.slice(p.page*8,p.page*8+8).forEach((line,i)=>this.text(line,132,147+i*32,18));
-    this.button('上一页',132,434,110,()=>{p.page--;this.draw();},p.page>0);this.text(`${p.page+1} / ${pages}`,270,454,18,C.muted);
+    this.button('上一页',132,434,110,()=>{p.page--;this.draw();},p.page>0);this.text(`${p.page+1} / ${pages}`,270,454,18,C.paperMuted);
     this.button('下一页',370,434,110,()=>{p.page++;this.draw();},p.page<pages-1);this.button('关闭',707,434,120,()=>{this.overlay=undefined;this.draw();});}
 }
