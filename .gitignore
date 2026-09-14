@@ -11,3 +11,7 @@ output/
 test-out.txt
 project.private.config.json
 .DS_Store
+
+# Copyright registration files containing personal identity information
+/软件著作权申请资料/草稿/申请表信息.md
+/软件著作权申请资料/正式资料/
