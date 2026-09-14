@@ -1,5 +1,5 @@
 {
-  "software_name": "六人掼蛋游戏软件",
+  "software_name": "开掼六六六",
   "business_understanding_required": true,
   "source_documents": [
     {
@@ -344,5 +344,7 @@
     "请确认操作手册结构是否按真实页面和流程展开，而不是套用抽象功能列表。"
   ],
   "confirmation_note": "用户确认业务理解",
-  "confirmed_at": "2026-09-14T08:10:02+00:00"
+  "confirmed_at": "2026-09-14T08:10:02+00:00",
+  "registration_version": "V1.0",
+  "registration_name_note": "依据用户编辑后的登记字段表更新名称与版本，原业务确认保持有效。"
 }
