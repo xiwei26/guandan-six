@@ -105,9 +105,9 @@
     {
       "file": "13-连接设置已保存.jpg",
       "title": "连接设置已保存",
-      "width": 948,
-      "height": 534,
-      "sha256": "0742a1ba4a276ce25e15cb48d52c6c4ad33ebed8ff5d607c2d877ccf65be498d",
+      "width": 1265,
+      "height": 712,
+      "sha256": "d100dac845d2b8a31ff2ba9b29ad508217aa30a05de4905b7445f97dabb58f46",
       "used_in_manual": true
     },
     {
@@ -121,9 +121,9 @@
     {
       "file": "15-个人战绩.jpg",
       "title": "个人战绩",
-      "width": 960,
-      "height": 540,
-      "sha256": "c05f0b0f9b84604db0c06878009bc81baad3f4c14ead650e1df3bad1935a611a",
+      "width": 1212,
+      "height": 1216,
+      "sha256": "53521ba646130964c1ae901df78c942dbdf7ea11a47e71a193395766bf231757",
       "used_in_manual": true
     }
   ],
