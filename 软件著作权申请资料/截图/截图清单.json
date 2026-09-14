@@ -1,0 +1,141 @@
+{
+  "method": "computer-use",
+  "captured_at": "2026-09-14T13:03:13.872569+00:00",
+  "runtime": "Codex Computer Use / in-app browser / original minigame/game.js / existing Canvas adapter / local real API and WebSocket",
+  "software_name": "开掼六六六",
+  "version": "V1.0",
+  "ui_name": "六人掼蛋",
+  "files": [
+    {
+      "file": "01-登录大厅.jpg",
+      "title": "登录大厅",
+      "width": 1212,
+      "height": 1216,
+      "sha256": "ca25619a717af62416f224e58c9dfaf1b1b791b81f509f98eca28feb1cc20f7e",
+      "used_in_manual": true
+    },
+    {
+      "file": "02-房间大厅.jpg",
+      "title": "房间大厅",
+      "width": 1212,
+      "height": 1216,
+      "sha256": "f73381d235630f8bc3eae7e404d3ddd17faf68ff74847bdbe61e2c18f2a46833",
+      "used_in_manual": true
+    },
+    {
+      "file": "03-房间设置.jpg",
+      "title": "房间设置",
+      "width": 1212,
+      "height": 1216,
+      "sha256": "5d99fd0349278efa95aba11363ed3334dc26e8fd7ceb37fc486267064245207c",
+      "used_in_manual": true
+    },
+    {
+      "file": "04-体验对局.jpg",
+      "title": "体验对局",
+      "width": 1212,
+      "height": 1216,
+      "sha256": "291378c05dba83f5e997a84c09a8f7666f3b752c8a697e1438210ef93974a086",
+      "used_in_manual": true
+    },
+    {
+      "file": "05-理牌分组.jpg",
+      "title": "理牌分组",
+      "width": 1212,
+      "height": 1216,
+      "sha256": "4ce723b5499a34308890ccab428d246cb809bcd9781135624f908319abb1e4d5",
+      "used_in_manual": true
+    },
+    {
+      "file": "06-提示选牌.jpg",
+      "title": "提示选牌",
+      "width": 1212,
+      "height": 1216,
+      "sha256": "2bf34d960f7ec5ef5abd196a95918ddaa0c83a7c66d03566f223df67e190e314",
+      "used_in_manual": true
+    },
+    {
+      "file": "07-出牌结果.jpg",
+      "title": "出牌结果",
+      "width": 1212,
+      "height": 1216,
+      "sha256": "96e2f8d9eb0fb4a9276de7a0ca23528eccdbe02ed353d1043adb277c16665880",
+      "used_in_manual": true
+    },
+    {
+      "file": "08-记牌器.jpg",
+      "title": "记牌器",
+      "width": 1212,
+      "height": 1216,
+      "sha256": "6dd80e5579af45499baf70c84d389b85806f5a8c7f3c6171ed0b4c9c550f6f6f",
+      "used_in_manual": true
+    },
+    {
+      "file": "09-好友房准备.jpg",
+      "title": "好友房准备",
+      "width": 1265,
+      "height": 712,
+      "sha256": "be83dc5d6e5a2254b4ebd34252c30f3e0c8121fdacbd5df0c6279986dcd6af83",
+      "used_in_manual": true
+    },
+    {
+      "file": "10-已准备.jpg",
+      "title": "已准备",
+      "width": 1265,
+      "height": 712,
+      "sha256": "a037daa6276f89b4fd7aee63a69cb1c893f625335738f930cc8327da1ce08bbb",
+      "used_in_manual": true
+    },
+    {
+      "file": "11-规则说明.jpg",
+      "title": "规则说明",
+      "width": 1265,
+      "height": 712,
+      "sha256": "8178cda5ebc260bea1dee4aaefec15fca057a699b49e0430f5e2d81ea00db22d",
+      "used_in_manual": true
+    },
+    {
+      "file": "12-连接地址输入.jpg",
+      "title": "连接地址输入",
+      "width": 1265,
+      "height": 712,
+      "sha256": "985fb1a8dc72f15cc9242bbd955b3a47f132cfb91c7fb0aadb96765cc7db4000",
+      "used_in_manual": false
+    },
+    {
+      "file": "13-连接设置已保存.jpg",
+      "title": "连接设置已保存",
+      "width": 948,
+      "height": 534,
+      "sha256": "0742a1ba4a276ce25e15cb48d52c6c4ad33ebed8ff5d607c2d877ccf65be498d",
+      "used_in_manual": true
+    },
+    {
+      "file": "14-结算排名.jpg",
+      "title": "结算排名",
+      "width": 960,
+      "height": 540,
+      "sha256": "a8ce118c4ce7efa7e933583f26b2c3445d311ba040c62684a6ec96891e43d4ab",
+      "used_in_manual": true
+    },
+    {
+      "file": "15-个人战绩.jpg",
+      "title": "个人战绩",
+      "width": 960,
+      "height": 540,
+      "sha256": "c05f0b0f9b84604db0c06878009bc81baad3f4c14ead650e1df3bad1935a611a",
+      "used_in_manual": true
+    }
+  ],
+  "limitations": [
+    "不是小米14真机或微信开发者工具截图",
+    "微信登录与原生分享未验证",
+    "输入键盘由现有浏览器适配层模拟",
+    "体验房固定1局，未进入下一局贡还贡；手册保留可见占位"
+  ],
+  "observed_results": [
+    "普通好友房准备人数0/6变为1/6",
+    "提示选择5张，实际出牌后手牌27张变为22张",
+    "体验房924796完成，B队获胜升3级，六人排名与战绩一致"
+  ]
+}
