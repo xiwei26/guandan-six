@@ -1,0 +1,153 @@
+{
+  "software_name": "开掼六六六",
+  "version": "V1.0",
+  "project_root": "E:\\learning\\guandan-six",
+  "file_count": 13,
+  "material_line_count": 1534,
+  "source_line_count": 1582,
+  "selected_source_line_count": 1521,
+  "lines_per_page": 50,
+  "total_pages": 31,
+  "target_pages": 60,
+  "available_candidate_line_count": 1534,
+  "available_candidate_pages": 31,
+  "supplement_status": "候选源码不足60页，按全部代码材料生成",
+  "mode": "all_under_60_pages",
+  "selection_file": "软件著作权申请资料\\草稿\\代码文件选择.json",
+  "outputs": [
+    "代码-全部.md"
+  ],
+  "files": [
+    {
+      "path": "game-src/main.ts",
+      "source_line_count": 2,
+      "blank_line_count": 0,
+      "selected_line_start": 1,
+      "selected_line_end": 2,
+      "selected_line_count": 2,
+      "material_line_start": 1,
+      "material_line_end": 3
+    },
+    {
+      "path": "game-src/runtime.ts",
+      "source_line_count": 275,
+      "blank_line_count": 3,
+      "selected_line_start": 1,
+      "selected_line_end": 275,
+      "selected_line_count": 272,
+      "material_line_start": 4,
+      "material_line_end": 276
+    },
+    {
+      "path": "game-src/paint.ts",
+      "source_line_count": 126,
+      "blank_line_count": 13,
+      "selected_line_start": 1,
+      "selected_line_end": 126,
+      "selected_line_count": 113,
+      "material_line_start": 277,
+      "material_line_end": 390
+    },
+    {
+      "path": "game-src/layout.ts",
+      "source_line_count": 21,
+      "blank_line_count": 0,
+      "selected_line_start": 1,
+      "selected_line_end": 21,
+      "selected_line_count": 21,
+      "material_line_start": 391,
+      "material_line_end": 412
+    },
+    {
+      "path": "game-src/arrangement.ts",
+      "source_line_count": 33,
+      "blank_line_count": 0,
+      "selected_line_start": 1,
+      "selected_line_end": 33,
+      "selected_line_count": 33,
+      "material_line_start": 413,
+      "material_line_end": 446
+    },
+    {
+      "path": "miniprogram/services/client.ts",
+      "source_line_count": 70,
+      "blank_line_count": 1,
+      "selected_line_start": 1,
+      "selected_line_end": 70,
+      "selected_line_count": 69,
+      "material_line_start": 447,
+      "material_line_end": 516
+    },
+    {
+      "path": "miniprogram/services/connection.ts",
+      "source_line_count": 41,
+      "blank_line_count": 1,
+      "selected_line_start": 1,
+      "selected_line_end": 41,
+      "selected_line_count": 40,
+      "material_line_start": 517,
+      "material_line_end": 557
+    },
+    {
+      "path": "miniprogram/utils/presentation.ts",
+      "source_line_count": 58,
+      "blank_line_count": 0,
+      "selected_line_start": 1,
+      "selected_line_end": 58,
+      "selected_line_count": 58,
+      "material_line_start": 558,
+      "material_line_end": 616
+    },
+    {
+      "path": "miniprogram/config.ts",
+      "source_line_count": 3,
+      "blank_line_count": 0,
+      "selected_line_start": 1,
+      "selected_line_end": 3,
+      "selected_line_count": 3,
+      "material_line_start": 617,
+      "material_line_end": 620
+    },
+    {
+      "path": "shared/cards.ts",
+      "source_line_count": 208,
+      "blank_line_count": 11,
+      "selected_line_start": 1,
+      "selected_line_end": 208,
+      "selected_line_count": 197,
+      "material_line_start": 621,
+      "material_line_end": 818
+    },
+    {
+      "path": "shared/types.ts",
+      "source_line_count": 31,
+      "blank_line_count": 0,
+      "selected_line_start": 1,
+      "selected_line_end": 31,
+      "selected_line_count": 31,
+      "material_line_start": 819,
+      "material_line_end": 850
+    },
+    {
+      "path": "server/game.ts",
+      "source_line_count": 425,
+      "blank_line_count": 29,
+      "selected_line_start": 1,
+      "selected_line_end": 425,
+      "selected_line_count": 396,
+      "material_line_start": 851,
+      "material_line_end": 1247
+    },
+    {
+      "path": "server/index.ts",
+      "source_line_count": 289,
+      "blank_line_count": 3,
+      "selected_line_start": 1,
+      "selected_line_end": 289,
+      "selected_line_count": 286,
+      "material_line_start": 1248,
+      "material_line_end": 1534
+    }
+  ],
+  "safe_software_filename": "开掼六六六"
+}

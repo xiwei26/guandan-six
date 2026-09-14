@@ -3,7 +3,7 @@
   "selection_required": true,
   "model_selection_required": false,
   "confirmation_required": true,
-  "user_confirmed": false,
+  "user_confirmed": true,
   "target_pages": 60,
   "lines_per_page": 50,
   "target_lines": 3000,
@@ -619,5 +619,7 @@
       "model_reason": "构建配置、测试或开发辅助文件，不作为本次运行功能源程序材料。"
     }
   ],
-  "scope_note": "files仅列当前小游戏及共享规则、服务端的有效原始功能源码；完整原候选保留为files与excluded_files两部分。全部13个范围内原始源码均已建议选入，尚待用户确认。"
+  "scope_note": "files仅列当前小游戏及共享规则、服务端的有效原始功能源码；完整原候选保留为files与excluded_files两部分。全部13个范围内原始源码均已建议选入，尚待用户确认。",
+  "confirmation_note": "用户确认13个完整源码文件的选择与排除范围",
+  "confirmed_at": "2026-09-14T08:17:21+00:00"
 }
