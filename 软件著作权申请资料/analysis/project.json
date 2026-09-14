@@ -1,0 +1,173 @@
+{
+  "project_root": "E:\\learning\\guandan-six",
+  "project_name": "guandan-six",
+  "software_name_candidate": "guandan six",
+  "package": {
+    "name": "guandan-six",
+    "path": "package.json",
+    "version": "0.1.0",
+    "scripts": {
+      "build:server": "tsx scripts/build-server.ts",
+      "build:game": "tsx scripts/sync-shared.ts && tsc -p game-src/tsconfig.json && tsx scripts/build-game.ts",
+      "check:game": "tsx --test tests/minigame.test.ts",
+      "dev": "concurrently -k \"tsx watch server/index.ts\" \"vite --host 0.0.0.0\"",
+      "dev:server": "tsx watch server/index.ts",
+      "dev:web": "vite --host 0.0.0.0",
+      "build": "tsc --noEmit && vite build",
+      "start": "tsx server/index.ts",
+      "test": "tsx --test tests/*.test.ts",
+      "simulate": "tsx scripts/simulate.ts",
+      "sync:mini": "tsx scripts/sync-shared.ts",
+      "check:mini": "tsx scripts/sync-shared.ts && tsc -p miniprogram/tsconfig.json --noEmit",
+      "check:mini:native": "tsx scripts/check-miniprogram.ts"
+    },
+    "dependency_names": [
+      "@types/node",
+      "@types/react",
+      "@types/react-dom",
+      "@types/ws",
+      "@vitejs/plugin-react",
+      "concurrently",
+      "esbuild",
+      "lucide-react",
+      "miniprogram-api-typings",
+      "react",
+      "react-dom",
+      "tsx",
+      "typescript",
+      "vite",
+      "ws"
+    ]
+  },
+  "frameworks": [
+    "React",
+    "Vite"
+  ],
+  "language": "TypeScript、JavaScript",
+  "source": {
+    "file_count": 63,
+    "line_count": 6677,
+    "total_file_count": 63,
+    "total_line_count": 6677,
+    "extension_counts": {
+      ".css": 1,
+      ".html": 2,
+      ".js": 4,
+      ".json": 11,
+      ".ts": 37,
+      ".tsx": 8
+    },
+    "category_counts": {
+      "api": 2,
+      "component": 6,
+      "entry": 2,
+      "page": 10,
+      "source": 41,
+      "style": 1,
+      "utility": 1
+    },
+    "categorized_files": {
+      "entry": [
+        "game-src/main.ts",
+        "src/main.tsx"
+      ],
+      "page": [
+        "miniprogram/pages/history/index.json",
+        "miniprogram/pages/history/index.ts",
+        "miniprogram/pages/home/index.json",
+        "miniprogram/pages/home/index.ts",
+        "miniprogram/pages/room/index.json",
+        "miniprogram/pages/room/index.ts",
+        "miniprogram/pages/rules/index.json",
+        "miniprogram/pages/rules/index.ts",
+        "miniprogram/pages/settings/index.json",
+        "miniprogram/pages/settings/index.ts"
+      ],
+      "component": [
+        "src/components/Card.tsx",
+        "src/components/Hand.tsx",
+        "src/components/Home.tsx",
+        "src/components/Info.tsx",
+        "src/components/Modal.tsx",
+        "src/components/Table.tsx"
+      ],
+      "api": [
+        "miniprogram/services/client.ts",
+        "miniprogram/services/connection.ts"
+      ],
+      "utility": [
+        "miniprogram/utils/presentation.ts"
+      ],
+      "style": [
+        "src/styles.css"
+      ],
+      "source": [
+        "index.html",
+        "project.config.json",
+        "project.private.config.json",
+        "data/state.json",
+        "game-src/arrangement.ts",
+        "game-src/layout.ts",
+        "game-src/paint.ts",
+        "game-src/runtime.ts",
+        "minigame/game.js",
+        "minigame/game.json",
+        "miniprogram/app.ts",
+        "miniprogram/config.ts",
+        "miniprogram/sitemap.json",
+        "miniprogram/shared/cards.ts",
+        "miniprogram/shared/types.ts",
+        "output/simulation.json",
+        "output/game-preview/adapter.js",
+        "output/game-preview/index.html",
+        "output/game-preview/render.ts",
+        "output/game-preview/server.ts",
+        "output/miniprogram/styles.js",
+        "output/miniprogram/templates.js",
+        "scripts/build-game.ts",
+        "scripts/build-server.ts",
+        "scripts/check-miniprogram.ts",
+        "scripts/simulate.ts",
+        "scripts/sync-shared.ts",
+        "server/game.ts",
+        "server/index.ts",
+        "shared/cards.ts",
+        "shared/types.ts",
+        "src/api.ts",
+        "src/App.tsx",
+        "src/audio.ts",
+        "src/useGame.ts",
+        "tests/api.test.ts",
+        "tests/arrangement.test.ts",
+        "tests/cards.test.ts",
+        "tests/game.test.ts",
+        "tests/minigame.test.ts",
+        "tests/miniprogram.test.ts"
+      ]
+    }
+  },
+  "routes": [
+    "/",
+    "/pages/home/index"
+  ],
+  "readme_excerpt": "# å\n­äººæ¼è\næãå\n­äººæ¼èå°ç¨åº PRD v1.0ãå¼åï¼åå¸ç®æ ç°å·²è°æ´ä¸º **å¾®ä¿¡å°æ¸¸æ**ãå\n­äººãä¸å¯çãæ¯äºº 27 å¼ ãéä½ç»éãæ ¹å·¥ç¨ä½¿ç¨ `compileType: game`ï¼å\n¥å£ä¸º `minigame/game.js`ï¼ä»¥æ¨ªå± Canvas ç»å¶å¤§å\nåçæ¡ãä¿ç Web ååä¸æ§å°ç¨åºé¡µé¢ä½ä¸ºåèï¼æ­£å¼åå¸ä»éçå®å°æ¸¸æè´¦å·éªæ¶ãåæ³ååä¸åç«¯é¨ç½²ã\n## å¾®ä¿¡å°æ¸¸æï¼å½ååå¸ç®æ ï¼\n### æ¾ç»¿çæ¡è§è§æ¹çï¼2026-09-13ï¼\nå®½å±æ¯ä¾ä¿®æ­£ï¼èæ¯æ¸åè¦çæ´ä¸ªè®¾å¤ç»å¸ï¼æ¶é¤åºå® 16:9 å\nå®¹åºä¸¤ä¾§çè²å¸¦åå\nåµè¾¹æ¡ãå¤§å\nä¸¤åæ ¹æ®æ¨ªå±å®å\n¨åºçé¢å¤å®½åº¦åä¸¤ä¾§å±å¼ï¼æå­åæå\nçä»ç­æ¯ç»å¶ï¼ç¹å»åºååæ­¥ä½ç§»ã16:9 å±å¹ä¿çåå¸å±ï¼çæ¡ä¸æçç»§ç»­ä½¿ç¨åæé»è¾åæ ï¼åæµ·ä¸åºé¨æå¿åºååªå»¶ä¼¸èæ¯ã\nå¾®ä¿¡å°æ¸¸æå¤§å\néç¨æ¾ç»¿èæ¯ãæçº¸ç½æä½é¢æ¿ä¸é¦æ§éä¸»æé®ï¼ä¿çå¾®ä¿¡ç»å½ãæ¸¸å®¢ä½éªãå»ºæ¿ãéè¯·å\n¥æ¿åæ¿é´é\nç½®ãçæ¡éç¨æ¤­åæ¡é¢ãèæ©éä¼å¤´åãå½åååé«äº®åç¬ç«çæ¬äººåº§ä½ï¼ççãè§åãè®¾ç½®ä¸ç»ç®é¢æ¿ç»ä¸ä¸ºçº¸ç½æ ·å¼ãæµç§°æå¯ç¨å®½åº¦æªæ­ï¼é¡¶é¨å³ä¾§ç»§ç»­é¿è®©å¾®ä¿¡åçè¶åã\nç»å¶æ ·å¼éä¸­å¨ `game-src/paint.ts`ï¼ç± `game-src/runtime.ts` è°ç¨ãæå\nçè±è²ç´æ¥ç¨ Canvas è·¯å¾ç»å¶ï¼é¿å\nç³»ç»å­ä½ç¼ºå°è±è²å­ç¬¦æ¶æ¾ç¤ºæ¹æ¡ï¼æ²¡ææ°å¢å¾çä¸è½½æè¿è¡æ¶ä¾èµãä»ä½¿ç¨åæ 27 å¼ éå æçãéä¸­æ¬èµ·ãè¿ç»­æ»éååæççåç»é»è¾ãä»\næ´æ°å°æ¸¸æå®¢æ·ç«¯ï¼Web åèçä¸æå¡ç«¯è§åä¸åï¼éæ°è¿è¡ `npm run build:game` åï¼å¨å¾®ä¿¡å¼åè\nå·¥å\n·éæ°ç¼è¯å³å¯æ¥çã\néªæ¶å\nå« 960Ã540 é»è¾ç»å¸å 844Ã390 æ¨ªå±å®å\n¨åºçæ¬å° Canvas ç¦»çº¿æ¸²æï¼ä»¥åå\n¨é¡¹ç®èªå¨åæµè¯ãç¦»çº¿æ¸²æç¨äºæ£æ¥å¸å±ãçé¢åå¼¹å±ï¼ä¸ç­åäºå¾®ä¿¡çæºææµè§å¨éªæ¶ï¼æ¬æ¬¡æµè§å¨é¢è§ä¸ Figma åå\n¥åå·¥å\n·æééå¶ï¼å°æªå®æãå¾®ä¿¡ææãåçåäº«åçæºæ§è½ä»éå¨å¾®ä¿¡ç¯å¢éªæ¶ã\nåºé¨æçéç¨å±\nä¸­çåæéå å¤§çé¢ï¼éæçæ°éèªå¨è°æ´é´è·ï¼27 å¼ å\n¨é¨å¯è§ï¼éçåä¸æ¬èµ·ï¼æ»éææä¸å±çé¢å½ä¸­ãå¤§å°çä»¥çº¢è²/é»è²ç«æ `JOKER` åºåï¼æ¡é¢åºçåæ­¥ä½¿ç¨æ­¤æ¾ç¤ºæ¹å¼ãæ­¤å¸å±ä¿çççåç»åç»å·ï¼ä¸å½±åçå®çå¼ä¸æå¡å¨å¤å®ã\nå°æ¸¸æçæ¡æ°å¢ãä¸é®ççãä¸ãè°æ´ãï¼èªå¨æå¤©çç¸ãæ®éç¸å¼¹ãä¸çç¸ãåè±é¡ºåå\n¶ä»ç»åä¼å\næ´çï¼æ¯å¼ å®ä½çåªå½å\n¥ä¸ä¸ªç»ï¼å©ä½çååãæçæ¾ç¤ºç»å·ååç»åºçº¿ï¼åç»é¢æ¿å¯ç¹éæ´ç»ãåç§»/åç§»ãæç»ï¼ä¹å¯å¨ä¸æ¹æçç¹éææ»éåãéçæç»ããä¸åæ³ççåä¼æç¤ºï¼ä¸è½å¼ºè¡æç»ãæç¹æ°/è±è²æåºå¯éåºåç»æåãèªå¨æ¹æ¡æ¯å¯åå¼å»ºè®®ï¼ä¸ä»£è¡¨å\n¨å±æä¼ææ³ã\nåç»åªå½±åå½åå®¢æ·ç«¯çæçå±ç¤ºï¼ä¸åéåºçå¨ä½ãä¸è¯»åå\n¶ä»ç©å®¶æçãåºçåè´¡è¿è´¡åæ¸\nçå¤±æçå¹¶è¡¥å\n¥æ°çï¼æ°ä¸å±éç½®ï¼ååå°éè¿ä¿çå½åå\nå­ä¸­çåç»ï¼å½»åºå\n³é­å°æ¸¸æåééæ°ççãæ´æ°æ¬åè½åªééæ°ç¼è¯/ä¸ä¼ å°æ¸¸æå®¢æ·ç«¯ï¼æ éæ´æ° VPS åç«¯ã\n```bash\nnpm install\nnpm run build:game\nnpm run check:game",
+  "run_command_candidates": [
+    "npm run dev",
+    "npm run start"
+  ],
+  "feature_candidates": [
+    "pages/home/index",
+    "miniprogram history",
+    "miniprogram home",
+    "miniprogram room",
+    "miniprogram rules",
+    "miniprogram settings",
+    "client",
+    "connection",
+    "Hand",
+    "Home",
+    "Info",
+    "Modal",
+    "Table"
+  ]
+}

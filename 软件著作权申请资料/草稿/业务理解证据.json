@@ -1,0 +1,175 @@
+{
+  "software_name": "六人掼蛋游戏软件",
+  "project_root": "E:\\learning\\guandan-six",
+  "instruction": "本文件只收集证据，不决定行业、功能或手册结构。请由模型阅读这些证据以及必要的项目源码后，另行编写业务理解模型稿。",
+  "documents": [
+    {
+      "path": "README.md",
+      "size": 18933,
+      "headings": [
+        "六人掼蛋",
+        "微信小游戏（当前发布目标）",
+        "松绿牌桌视觉改版（2026-09-13）",
+        "运行",
+        "已实现",
+        "规则解释（6P_V2）",
+        "项目结构",
+        "验证",
+        "当前边界",
+        "旧微信小程序页面（保留参考）"
+      ],
+      "opening": "六人掼蛋 按《六人掼蛋小程序 PRD v1.0》开发，发布目标现已调整为 微信小游戏 。六人、三副牌、每人 27 张、隔位组队。根工程使用 compileType: game ，入口为 minigame/game.js ，以横屏 Canvas 绘制大厅和牌桌。保留 Web 原型与旧小程序页面作为参考；正式发布仍需真实小游戏账号验收、合法域名与后端部署。 微信小游戏（当前发布目标） 松绿牌桌视觉改版（2026-09-13） 宽屏比例修正：背景渐变覆盖整个设备画布，消除固定 16:9 内容区两侧的色带和内嵌边框。大厅两列根据横屏安全区的额外宽度向两侧展开，文字和扑克牌仍等比绘制；点击区域同步位移。16:9 屏幕保留原布局，牌桌与手牌继续使用原有逻辑坐标，刘海与底部手势区域只延伸背景。 微信小游戏大厅采用松绿背景、暖纸白操作面板与香槟金主按钮，保留微信登录、游客体验、建房、邀请入房和房间配置。牌桌采用椭圆桌面、蓝橙队伍头像、当前回合高亮和独立的本人座位；理牌、规则、设置与结算面板统一为纸白样式。昵称按可用宽度截断，顶部右侧继续避让微信原生胶囊。 绘制样式集中在 game-src/paint.ts ，由 game-src/runtime.ts 调用。扑克牌花色直接用 Canvas 路径绘制，避免系统字体缺少花色字符时显示方框；没有新增图片下载或运行时依赖。仍使用单排 27 张重叠手牌、选中抬起、连续滑选和原有理牌分组逻辑。仅更新小游戏客户端，Web 参考版与服务端规则不变；重新运行 npm run build:game 后，在微信开发者工具重新编译即可查看。 验收包含 960×540 逻辑画布及 844×390 横屏安全区的本地 Canvas 离线渲染，以及全项目自动化测试。离线渲染用于检查布局、牌面和弹层，不等同于微信真机或浏览器验收；本次浏览器预览与 Figma 写入受工具权限限制，尚未完成。微信授权、原生分享和真机性能仍需在微信环境验收。 底部手牌采用居中的单排重叠大牌面，随手牌数量自动调整间距，27 张全部可见；选牌向上抬起，滑选按最上层牌面命中。大小王以红色/黑色竖排"
+    },
+    {
+      "path": "test-out.txt",
+      "size": 3518,
+      "headings": [],
+      "opening": "ÿþA?\u0000r\u0000o\u0000o\u0000m\u0000 \u0000e\u0000n\u0000f\u0000o\u0000r\u0000c\u0000e\u0000s\u0000 \u0000f\u0000i\u0000x\u0000e\u0000d\u0000 \u0000r\u0000u\u0000l\u0000e\u0000s\u0000,\u0000 \u0000s\u0000i\u0000x\u0000 \u0000p\u0000l\u0000a\u0000y\u0000e\u0000r\u0000s\u0000,\u0000 \u0000h\u0000o\u0000s\u0000t\u0000 \u0000s\u0000t\u0000a\u0000r\u0000t\u0000 \u0000a\u0000n\u0000d\u0000 \u0000r\u0000e\u0000a\u0000d\u0000i\u0000n\u0000e\u0000s\u0000s\u0000;\u0000 \u0000s\u0000e\u0000r\u0000v\u0000e\u0000r\u0000 \u0000d\u0000e\u0000a\u0000l\u0000s\u0000 \u0000a\u0000l\u0000l\u0000 \u00001\u00006\u00002\u0000 \u0000p\u0000h\u0000y\u0000s\u0000i\u0000c\u0000a\u0000l\u0000 \u0000c\u0000a\u0000r\u0000d\u0000s\u0000 \u0000(\u00005\u0000.\u00005\u00002\u00001\u00001\u0000m\u0000s\u0000)\u0000 \u0000 \u0000A?\u0000o\u0000n\u0000l\u0000y\u0000 \u0000u\u0000n\u0000r\u0000e\u0000a\u0000d\u0000y\u0000 \u0000s\u0000e\u0000a\u0000t\u0000s\u0000 \u0000c\u0000a\u0000n\u0000 \u0000s\u0000w\u0000a\u0000p\u0000;\u0000 \u0000a\u0000 \u0000p\u0000r\u0000e\u0000p\u0000a\u0000r\u0000e\u0000d\u0000 \u0000b\u0000y\u0000s\u0000t\u0000a\u0000n\u0000d\u0000e\u0000r\u0000 \u0000d\u0000o\u0000e\u0000s\u0000 \u0000n\u0000o\u0000t\u0000 \u0000p\u0000r\u0000o\u0000h\u0000i\u0000b\u0000i\u0000t\u0000 \u0000o\u0000t\u0000h\u0000e\u0000r\u0000 \u0000u\u0000n\u0000r\u0000e\u0000a\u0000d\u0000y\u0000 \u0000p\u0000l\u0000a\u0000y\u0000e\u0000r\u0000s\u0000 \u0000s\u0000w\u0000a\u0000p\u0000p\u0000i\u0000n\u0000g\u0000 \u0000(\u00000\u0000.\u00006\u00007\u00001\u00001\u0000m\u0000s\u0000)\u0000 \u0000 \u0000A?\u0000p\u0000u\u0000b\u0000l\u0000i\u0000c\u0000 \u0000v\u0000i\u0000e\u0000w\u0000s\u0000 \u0000c\u0000o\u0000n\u0000t\u0000a\u0000i\u0000n\u0000 \u0000o\u0000n\u0000l\u0000y\u0000 \u0000t\u0000h\u0000e\u0000 \u0000v\u0000i\u0000e\u0000w\u0000e\u0000r\u0000 \u0000h\u0000a\u0000n\u0000d\u0000,\u0000 \u0000o\u0000b\u0000e\u0000y\u0000 \u0000c\u0000o\u0000u\u0000n\u0000t\u0000 \u0000v\u0000i\u0000s\u0000i\u0000b\u0000i\u0000l\u0000i\u0000t\u0000y\u0000 \u0000a\u0000n\u0000d\u0000 \u0000c\u0000a\u0000n\u0000n\u0000o\u0000t\u0000 \u0000m\u0000u\u0000t\u0000a\u0000t\u0000e\u0000 \u0000a\u0000u\u0000t\u0000h\u0000o\u0000r\u0000i\u0000t\u0000a\u0000t\u0000i\u0000v\u0000e\u0000 \u0000s\u0000t\u0000a\u0000t\u0000e\u0000 \u0000(\u00000\u0000.\u00009\u00008\u00009\u00006\u0000m\u0000s\u0000)\u0000 \u0000 \u0000A?\u0000i\u0000n\u0000v\u0000a\u0000l\u0000i\u0000d\u0000,\u0000 \u0000d\u0000u\u0000p\u0000l\u0000i\u0000c\u0000a\u0000t\u0000e\u0000,\u0000 \u0000f\u0000o\u0000r\u0000g\u0000e\u0000d\u0000,\u0000 \u0000r\u0000e\u0000p\u0000l\u0000a\u0000y\u0000e\u0000d\u0000 \u0000a\u0000n\u0000d\u0000 \u0000o\u0000u\u0000t\u0000-\u0000o\u0000f\u0000-\u0000t\u0000u\u0000r\u0000n\u0000 \u0000c\u0000a\u0000r\u0000d\u0000 \u0000a\u0000c\u0000t\u0000i\u0000o\u0000n\u0000s\u0000 \u0000a\u0000r\u0000e\u0000 \u0000a\u0000t\u0000o\u0000m\u0000i\u0000c\u0000 \u0000(\u00002\u0000.\u00003\u00002\u00005\u00007\u0000m\u0000s\u0000)\u0000 \u0000 \u0000A?\u0000f\u0000i\u0000v\u0000e\u0000 \u0000p\u0000a\u0000s\u0000s\u0000e\u0000"
+    },
+    {
+      "path": "六人掼蛋小程序 PRD v1.0.md",
+      "size": 26135,
+      "headings": [
+        "六人掼蛋小程序 PRD v1.0",
+        "1. 产品概述",
+        "1.1 产品名称",
+        "2. 产品背景",
+        "3. 产品目标",
+        "3.1 核心目标",
+        "目标 1：降低学习成本",
+        "目标 2：强化团队合作",
+        "目标 3：适合好友社交",
+        "4. 用户画像",
+        "核心用户",
+        "典型场景",
+        "5. 核心玩法定义",
+        "5.1 玩家人数",
+        "6. 队伍组成",
+        "A 队",
+        "B 队",
+        "7. 扑克牌数量",
+        "8. 基础出牌规则",
+        "9. 基础牌型",
+        "单张",
+        "对子",
+        "三张",
+        "三带二"
+      ],
+      "opening": "六人掼蛋小程序 PRD v1.0 1. 产品概述 1.1 产品名称 暂定： 六人掼蛋 产品形态：微信小程序 游戏类型：6 人实时在线棋牌 / 好友房 / 3v3 团队竞技 --- 2. 产品背景 目前主流掼蛋产品基本围绕传统 4 人、2v2 规则设计。 本产品希望在保留传统掼蛋牌型、出牌逻辑和核心策略体验的基础上，将参与人数扩展为： 6 人、3 人一队、3v3 对抗。 核心变化包括： - 使用 3 副扑克牌 - 共 162 张牌 - 每位玩家 27 张牌 - 6 个座位交替分布 - 同队玩家隔位而坐 - 出牌规则尽可能沿用传统掼蛋 - 在升级、排名、进贡等环节设计适合 3v3 的新规则 目标不是创造一套完全不同的扑克玩法，而是： 让熟悉传统掼蛋的玩家几乎无需学习即可进入六人局，但在团队协作和残局策略上获得明显不同于四人掼蛋的新体验。 --- 3. 产品目标 3.1 核心目标 目标 1：降低学习成本 熟悉传统掼蛋的玩家进入六人桌后，应能够直接理解： - 什么牌可以出 - 什么牌比什么牌大 - 炸弹规则 - 顺子规则 - 逢人配规则 - 接风 / 出牌顺序 不重新设计基础牌型系统。 目标 2：强化团队合作 传统掼蛋为 2v2。 六人版本变为： 3v3 需要产生新的团队策略，例如： - 给第一名队友让路 - 帮助第三名队友脱手 - 三名队友之间控制牌权 - 判断两个队友分别剩余多少牌 - 防止对方形成连续出完 目标 3：适合好友社交 优先服务： - 6 人线下朋友聚会 - 微信好友娱乐 - 熟人开黑 - 家庭娱乐 - 公司同事娱乐 第一阶段不以竞技赛事作为核心目标。 --- 4. 用户画像 核心用户 年龄： 25–60 岁 典型用户： - 已会传统掼蛋 - 经常 4–8 人聚会 - 微信社交关系稳定 - 希望多人一起玩但传统掼蛋一次只能 4 人 - 不希望有人在旁边等待下一局 典型场景 6 个朋友吃饭时： 传统情况： 4 个人玩，2 个人围观或轮换。 六人掼蛋： 6 个人可以同时进入同一局，三人一队。 --- 5. 核心玩法定义 5.1 玩家人数 固定： 6 人 暂不支持："
+    },
+    {
+      "path": "deploy/README.md",
+      "size": 4146,
+      "headings": [
+        "gd6.super-idol.com VPS 联网测试",
+        "前提",
+        "空闲 VPS：自动 HTTPS",
+        "在服务器本地编辑 .env：确认小游戏 AppID，按需填写 WECHAT_SECRET。",
+        "未填写密钥时，仍可以使用游客完成六人联网测试。",
+        "已有反向代理",
+        "微信开发者工具与真机",
+        "更新、日志和备份",
+        "空闲 VPS 使用下行；已有代理只更新 app 服务。"
+      ],
+      "opening": "gd6.super-idol.com VPS 联网测试 此配置运行一个 Node.js 后端进程，房间、身份和战绩写入 Docker 命名卷。客户端入口已经默认指向 https://gd6.super-idol.com 。配置文件就绪不代表域名或 VPS 已经部署成功。 本地验证：Compose 配置解析、后端 ESM 打包、直接使用 Node 启动打包模块后的健康接口/游客登录/建房、49 项回归测试及客户端构建通过。本机 Docker daemon 未运行，尚未验证镜像构建与容器启动；VPS 部署、证书签发和公网 WSS 验收需要连接服务器后完成。 前提 - Linux VPS 已安装 Docker Engine 和 Compose 插件。 - DNS 中 gd6.super-idol.com 的 A 记录指向 VPS 公网 IPv4；只有实际支持 IPv6 时才添加 AAAA。 - 使用本项目 Caddy 时，VPS 的 TCP 80/443 可从公网访问，且没有其他进程占用。若已运行 Nginx、Caddy 或面板网站，请复用现有反向代理，按下面的“已有反向代理”部署，勿停掉其他网站。 - SSH 密码、私钥和微信 AppSecret 不进入 Git。 空闲 VPS：自动 HTTPS 在准备安装项目的目录执行： 健康接口应返回 ok: true 和 ruleVersion: 6P V2 。Caddy 自动申请和续期证书，转发 HTTP 与 WebSocket。后端 3001 只绑定 VPS 回环地址，公网使用 443。 已有反向代理 在已有代理中，为 gd6.super-idol.com 配置证书并将全部请求转发到 http://127.0.0.1:3001 ，包括 /api/ 和 /ws ；开启 WebSocket Upgrade 支持。不要启用本项目 https profile，否则会抢占 80/443。若现有代理也运行在容器内，需将它接入应用 Docker 网络，代理目标改为 app:3001 ，不能用代理容器自己的回环地址。 微信开发者工具与真机 1."
+    }
+  ],
+  "code_evidence": {
+    "project_name": "guandan-six",
+    "software_name_candidate": "guandan six",
+    "frameworks": [
+      "React",
+      "Vite"
+    ],
+    "language": "TypeScript、JavaScript",
+    "routes": [
+      "/",
+      "/pages/home/index"
+    ],
+    "feature_name_candidates": [
+      "pages/home/index",
+      "miniprogram history",
+      "miniprogram home",
+      "miniprogram room",
+      "miniprogram rules",
+      "miniprogram settings",
+      "client",
+      "connection",
+      "Hand",
+      "Home",
+      "Info",
+      "Modal",
+      "Table"
+    ],
+    "entry_files": [
+      "game-src/main.ts",
+      "src/main.tsx"
+    ],
+    "page_files": [
+      "miniprogram/pages/history/index.json",
+      "miniprogram/pages/history/index.ts",
+      "miniprogram/pages/home/index.json",
+      "miniprogram/pages/home/index.ts",
+      "miniprogram/pages/room/index.json",
+      "miniprogram/pages/room/index.ts",
+      "miniprogram/pages/rules/index.json",
+      "miniprogram/pages/rules/index.ts",
+      "miniprogram/pages/settings/index.json",
+      "miniprogram/pages/settings/index.ts"
+    ],
+    "component_files": [
+      "src/components/Card.tsx",
+      "src/components/Hand.tsx",
+      "src/components/Home.tsx",
+      "src/components/Info.tsx",
+      "src/components/Modal.tsx",
+      "src/components/Table.tsx"
+    ],
+    "api_files": [
+      "miniprogram/services/client.ts",
+      "miniprogram/services/connection.ts"
+    ],
+    "run_command_candidates": [
+      "npm run dev",
+      "npm run start"
+    ],
+    "package": {
+      "name": "guandan-six",
+      "path": "package.json",
+      "version": "0.1.0",
+      "scripts": {
+        "build:server": "tsx scripts/build-server.ts",
+        "build:game": "tsx scripts/sync-shared.ts && tsc -p game-src/tsconfig.json && tsx scripts/build-game.ts",
+        "check:game": "tsx --test tests/minigame.test.ts",
+        "dev": "concurrently -k \"tsx watch server/index.ts\" \"vite --host 0.0.0.0\"",
+        "dev:server": "tsx watch server/index.ts",
+        "dev:web": "vite --host 0.0.0.0",
+        "build": "tsc --noEmit && vite build",
+        "start": "tsx server/index.ts",
+        "test": "tsx --test tests/*.test.ts",
+        "simulate": "tsx scripts/simulate.ts",
+        "sync:mini": "tsx scripts/sync-shared.ts",
+        "check:mini": "tsx scripts/sync-shared.ts && tsc -p miniprogram/tsconfig.json --noEmit",
+        "check:mini:native": "tsx scripts/check-miniprogram.ts"
+      },
+      "dependency_names": [
+        "@types/node",
+        "@types/react",
+        "@types/react-dom",
+        "@types/ws",
+        "@vitejs/plugin-react",
+        "concurrently",
+        "esbuild",
+        "lucide-react",
+        "miniprogram-api-typings",
+        "react",
+        "react-dom",
+        "tsx",
+        "typescript",
+        "vite",
+        "ws"
+      ]
+    }
+  },
+  "external_research_notes": ""
+}
