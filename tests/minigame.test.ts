@@ -61,6 +61,41 @@ test('game boots without DOM, Page or App and guest can accept a shared invitati
   assert.ok(h.texts().some(t=>t.s==='等待六位牌友准备'));h.click('准备');await h.flush();assert.deepEqual(JSON.parse(JSON.stringify(h.actions)),[{type:'ready',ready:true}]);
   assert.equal(h.events.ShareAppMessage()?.query,'room=123456');h.events.Hide();assert.equal(h.timers.size,0);assert.equal(h.sockets[0].closed,true);
 });
+test('computer room can shuffle, seat friends together and fill only vacant seats on start',async()=>{
+  const h=harness(true);
+  h.state.mode='computer';h.state.players=h.state.players.slice(0,2);
+  applyAction(h.state,'p1',{type:'ready',ready:true});
+  try {
+    h.click('电脑局 · 1–6 位真人');await h.flush();h.publish();
+    h.click('随机组队');await h.flush();assert.equal(h.actions.length,0,'ready host must block shuffling');
+    h.click('取消准备');await h.flush();
+    h.click('随机组队');await h.flush();assert.equal(h.actions.at(-1)?.type,'shuffleTeams');
+
+    const host=h.state.players.find(p=>p.userId==='p1')!;
+    const friend=h.state.players.find(p=>p.userId==='p2')!;
+    const target=[1,2,3,4,5,6].find(seat=>seat%2===host.seat%2&&!h.state.players.some(p=>p.seat===seat))!;
+    const positions=[[424,300],[758,216],[758,106],[397,72],[28,106],[28,216]];
+    const tapSeat=(seat:number)=>{
+      const [x,y]=positions[(seat-host.seat+6)%6];
+      h.events.TouchStart({touches:[{clientX:x+10,clientY:y+10}]});h.events.TouchEnd();
+    };
+    h.click('调整座位');tapSeat(friend.seat);tapSeat(target);await h.flush();
+    assert.equal(h.actions.at(-1)?.type,'swap');
+    assert.equal(h.state.players.find(p=>p.userId==='p2')?.team,host.team);
+    const chosenSeats=h.state.players.map(p=>({userId:p.userId,seat:p.seat,team:p.team}));
+    h.click('准备');await h.flush();
+    applyAction(h.state,'p2',{type:'ready',ready:true});h.publish();
+    h.click('开始');await h.flush();
+    assert.equal(h.state.status,'playing');
+    assert.deepEqual(h.state.players.filter(p=>!p.bot).map(p=>({userId:p.userId,seat:p.seat,team:p.team})),chosenSeats);
+    assert.equal(h.state.players.filter(p=>p.bot).length,4);
+    assert.equal(new Set(h.state.players.map(p=>p.seat)).size,6);
+    assert.ok(h.state.players.every(p=>p.hand.length===27));
+    assert.equal(new Set(h.state.players.flatMap(p=>p.hand.map(c=>c.id))).size,162);
+    assert.equal(h.errors.length,0);
+  } finally {h.events.Hide();}
+});
+
 test('game selects cards, submits server hints and recovers foreground snapshot',async()=>{
   const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
   for(const p of h.state.players)applyAction(h.state,p.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});h.state.currentTurnSeat=1;h.publish();

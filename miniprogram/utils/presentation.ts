@@ -39,7 +39,7 @@ export function tableView(room:RoomView,selected:string[],sort:'rank'|'suit') {
   return {
     room,me,host:me.userId===room.hostId,waiting:room.status==='waiting',playing:room.status==='playing',tribute:room.status==='tribute',ended:room.status==='settlement'||room.status==='finished',
     roundText:room.rules.rounds==='A'?'打到 A':`${room.rules.rounds} 局`,readyCount:realPlayers.filter(p=>p.ready).length,
-    allReady:computerRoom?realPlayers.length>0&&realPlayers.every(p=>p.ready):room.players.length===6&&room.players.every(p=>p.ready),canShuffle:!computerRoom&&room.players.every(p=>!p.ready),demo:computerRoom||room.players.some(p=>p.bot),demoLabel:computerRoom?`电脑补位 · ${room.players.filter(p=>p.bot).length} 位电脑`:'体验桌',
+    allReady:computerRoom?realPlayers.length>0&&realPlayers.every(p=>p.ready):room.players.length===6&&room.players.every(p=>p.ready),canShuffle:room.players.every(p=>!p.ready),demo:computerRoom||room.players.some(p=>p.bot),demoLabel:computerRoom?`电脑补位 · ${room.players.filter(p=>p.bot).length} 位电脑`:'体验桌',
     seats:Array.from({length:6},(_,i)=>{
       const seat=i+1,p=room.players.find(p=>p.seat===seat);
       return {seat,relative:(seat-room.mySeat+6)%6,team:seat%2?'A':'B',occupied:!!p,nickname:p?`${p.nickname}${p.seat===room.mySeat?' · 你':''}`:'等待好友',initial:p?p.nickname.slice(0,1):'+',
