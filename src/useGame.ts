@@ -33,7 +33,8 @@ export function useGame() {
     return run(async()=>{
       const user=await identity(nickname);
       const url=mode==='create'?'/api/rooms':mode==='demo'?'/api/demo':`/api/rooms/${value}/join`;
-      const result=await request<{room:RoomView}>(url,user,mode==='create'?{rules:value}:{});
+      const payload=mode==='create'?{rules:value}:mode==='demo'?{waitForPlayers:true}:{};
+      const result=await request<{room:RoomView}>(url,user,payload);
       accept(result.room);
       const clean=new URL(location.href);clean.searchParams.delete('room');history.replaceState(null,'',clean);
       return true;

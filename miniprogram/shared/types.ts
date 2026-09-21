@@ -2,6 +2,7 @@
 export type Rank = '2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'10'|'J'|'Q'|'K'|'A'|'SJ'|'BJ';
 export type Suit = 'spade'|'heart'|'club'|'diamond'|'joker';
 export type Team = 'A'|'B';
+export type RoomMode = 'friends'|'computer';
 export interface Card { id: string; deckIndex: 0|1|2; suit: Suit; rank: Rank }
 export type CombinationType = 'single'|'pair'|'triple'|'fullHouse'|'straight'|'threePairs'|'twoTriples'|'straightFlush'|'bomb'|'jokerBomb'|'kingBomb';
 export interface Combination { type: CombinationType; rank: number; size: number; cards: Card[]; label: string }
@@ -18,7 +19,7 @@ export interface Tribute { from: number; to: number; given: boolean; returned: b
 export interface MatchStats { rounds: number; firsts: Record<string,number>; sweeps: Record<Team,number>; bombs: Record<number,number>; biggestBomb: number; totalPlays: number }
 export interface Settlement { order: number[]; winner: Team; upgrade: number; fromLevel: Rank; toLevel: Rank; sweep: boolean; matchOver: boolean; reason: string; biggestBomb: number }
 export interface GameState {
- roomId: string; hostId: string; players: Player[]; rules: RuleConfig; status: 'waiting'|'tribute'|'playing'|'settlement'|'finished';
+ roomId: string; hostId: string; mode: RoomMode; players: Player[]; rules: RuleConfig; status: 'waiting'|'tribute'|'playing'|'settlement'|'finished';
  round: number; currentLevel: Rank; teamLevels: Record<Team,Rank>; currentTurnSeat: number;
  lastPlay: Combination|null; lastPlaySeat: number|null; passSeats: number[]; finishOrder: number[];
  tribute: Tribute[]; tributeResisted: boolean; settlement: Settlement|null; deadline: number|null;

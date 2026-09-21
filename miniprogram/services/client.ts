@@ -51,9 +51,9 @@ export class MiniClient {
     if(this.server()!==base)throw new Error('服务地址已变更，请重新登录');
     this.platform.setStorageSync(`gd6.${base}.session`,session);return session;
   }
-  async enter(mode:'create'|'join'|'demo',value?:Partial<RuleConfig>|string):Promise<RoomView> {
+  async enter(mode:'create'|'join'|'demo',value?:Partial<RuleConfig>|string|{waitForPlayers:boolean}):Promise<RoomView> {
     const path=mode==='create'?'/api/rooms':mode==='demo'?'/api/demo':`/api/rooms/${value}/join`;
-    const result=await this.request<{room:RoomView}>(path,mode==='create'?{rules:value}:{});
+    const result=await this.request<{room:RoomView}>(path,mode==='create'?{rules:value}:mode==='demo'?{waitForPlayers:true}:{});
     this.remember(result.room.roomId);return result.room;
   }
   async room(id:string):Promise<RoomView> { const result=await this.request<{room:RoomView}>(`/api/rooms/${id}`);this.remember(id);return result.room; }

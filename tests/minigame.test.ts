@@ -62,7 +62,7 @@ test('game boots without DOM, Page or App and guest can accept a shared invitati
   assert.equal(h.events.ShareAppMessage()?.query,'room=123456');h.events.Hide();assert.equal(h.timers.size,0);assert.equal(h.sockets[0].closed,true);
 });
 test('game selects cards, submits server hints and recovers foreground snapshot',async()=>{
-  const h=harness(true);h.click('体验一局 · 五位机器人');await h.flush();
+  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
   for(const p of h.state.players)applyAction(h.state,p.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});h.state.currentTurnSeat=1;h.publish();
   const layout=handLayout(27);
   h.events.TouchStart({touches:[{clientX:layout.left+5,clientY:410}]});h.events.TouchMove({touches:[{clientX:layout.left+layout.step+5,clientY:410}]});h.events.TouchEnd();
@@ -73,7 +73,7 @@ test('game selects cards, submits server hints and recovers foreground snapshot'
   h.events.Hide();assert.equal(h.errors.length,0);
 });
 test('game auto arrangement opens editable groups without submitting a server action',async()=>{
-  const h=harness(true);h.click('体验一局 · 五位机器人');await h.flush();
+  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
   for(const p of h.state.players)applyAction(h.state,p.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});h.publish();
   h.click('一键理牌');assert.ok(h.texts().some(t=>t.s.startsWith('手牌分组')));
   const label=h.texts().find(t=>/^1\. /.test(t.s))!.s;h.click(label);h.click('选牌成组');h.click('完成');h.click('调整');
@@ -102,7 +102,7 @@ test('wide lobby stays inside the safe area and translated buttons remain clicka
 });
 
 test('game requires a valid return card and can continue from settlement',async()=>{
-  const h=harness(true);h.click('体验一局 · 五位机器人');await h.flush();
+  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
   for(const p of h.state.players)applyAction(h.state,p.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});
   h.state.status='tribute';h.state.tribute=[{from:2,to:1,given:true,returned:false}];h.state.deadline=null;h.publish();
   h.click('确认还贡');await h.flush();assert.equal(h.actions.length,0);

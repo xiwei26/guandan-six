@@ -106,6 +106,27 @@ test('server restart restores game and hashed credentials; invalid tokens cannot
   } finally {await app.close();await rm(directory,{recursive:true,force:true});}
 });
 
+test('computer room accepts additional real players and fills the remaining seats at start',async()=>{
+  const app=await launch();
+  try {
+    const host=await app.login('电脑局房主');
+    const friend=await app.login('电脑局牌友');
+    const created=await app.api('/api/demo',host.token,{waitForPlayers:true});
+    assert.equal(created.status,201);
+    const roomId=(created.data.room as RoomView).roomId;
+    assert.equal((created.data.room as RoomView).mode,'computer');
+    assert.equal((created.data.room as RoomView).status,'waiting');
+    assert.equal((await app.api(`/api/rooms/${roomId}/join`,friend.token,{})).status,200);
+    assert.equal((await app.api(`/api/rooms/${roomId}/actions`,friend.token,{action:{type:'ready',ready:true}})).status,200);
+    const started=await app.api(`/api/rooms/${roomId}/actions`,host.token,{action:{type:'start'}});
+    assert.equal(started.status,200);
+    const view=started.data.room as RoomView;
+    assert.equal(view.status,'playing');
+    assert.equal(view.players.filter(player=>!player.bot).length,2);
+    assert.equal(view.players.filter(player=>player.bot).length,4);
+  } finally {await app.close();}
+});
+
 test('personal statistics are private and wechat login needs a configured appid',async()=>{
   const app=await launch({persist:false,tick:false});
   try {

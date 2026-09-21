@@ -29,6 +29,7 @@ export function createApplication(options: Options = {}) {
     if (saved.version !== 1) throw new Error('不支持的本地存档版本');
     saved.rooms.forEach(room => {
       room.players.forEach(player => { player.connected = player.bot; });
+      room.mode = room.mode === 'computer' ? 'computer' : 'friends';
       if (room.deadline !== null) room.deadline = Date.now() + 30_000;
       if (!room.matchStats) room.matchStats = {...createMatchStats(),rounds:['settlement','finished'].includes(room.status)?room.round:Math.max(0,room.round-1),totalPlays:room.totalPlays,biggestBomb:room.biggestBomb};
       room.rules = {...DEFAULT_RULES,...room.rules};
@@ -111,7 +112,7 @@ export function createApplication(options: Options = {}) {
     const existing=[...rooms.values()].find(r=>r.players.some(p=>p.userId===userId) && r.status!=='finished');
     if (existing) throw new HttpError(409,`你已在房间 ${existing.roomId} 中，请先返回或退出该房间`);
   }
-  function allocate(session:StoredSession,rules:Parameters<typeof createRoom>[3]) {
+  function allocate(session:StoredSession,rules:Parameters<typeof createRoom>[3],mode:Parameters<typeof createRoom>[4] = 'friends') {
     vacant(session.userId);
     // Expired completed/waiting rooms are removed only when nobody is connected.
     for (const [id,room] of rooms) if (Date.now()-room.createdAt>24*3600_000 && ['waiting','finished'].includes(room.status)
@@ -119,7 +120,7 @@ export function createApplication(options: Options = {}) {
     if (rooms.size>=100) throw new HttpError(503,'开发服务器房间已满，请稍后再试');
     let roomId:string;
     do {roomId=String(randomInt(100000,1000000));} while(rooms.has(roomId));
-    const room=createRoom(roomId,session.userId,session.nickname,rules);
+    const room=createRoom(roomId,session.userId,session.nickname,rules,mode);
     rooms.set(roomId,room);
     return room;
   }
@@ -199,11 +200,14 @@ export function createApplication(options: Options = {}) {
       if ((path==='/api/rooms'||path==='/api/demo') && req.method==='POST') {
         const data=await body(req);
         if (path==='/api/demo' && options.demo===false) throw new HttpError(403,'当前环境未开放体验桌');
-        const room=allocate(session,path==='/api/demo'?{rounds:1,turnSeconds:30}:data.rules as Parameters<typeof createRoom>[3]);
+        const computer=path==='/api/demo';
+        const room=allocate(session,computer?{rounds:1,turnSeconds:30}:data.rules as Parameters<typeof createRoom>[3],computer?'computer':'friends');
         if (path==='/api/demo') {
-          ['青竹','橘子','远山','麦穗','清风'].forEach((name,index)=>addPlayer(room,`bot-${room.roomId}-${index}`,name,true));
           applyAction(room,session.userId,{type:'ready',ready:true});
-          applyAction(room,session.userId,{type:'start'});
+          if (data.waitForPlayers !== true) {
+            ['青竹','橘子','远山','麦穗','清风'].forEach((name,index)=>addPlayer(room,`bot-${room.roomId}-${index}`,name,true));
+            applyAction(room,session.userId,{type:'start'});
+          }
         }
         broadcast(room);return json(res,201,{room:getRoomView(room,session.userId)});
       }

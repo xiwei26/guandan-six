@@ -1,6 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { canBeat, cardStrength, createDeck, dealCards, findCombinations, findHints, isWildcard, shuffleDeck, sortCards } from '../shared/cards.ts';
-import { DEFAULT_RULES, type Card, type GameAction, type GameState, type MatchStats, type Player, type Rank, type RoomView, type RuleConfig, type Team, type Tribute } from '../shared/types.ts';
+import { DEFAULT_RULES, type Card, type GameAction, type GameState, type MatchStats, type Player, type Rank, type RoomMode, type RoomView, type RuleConfig, type Team, type Tribute } from '../shared/types.ts';
 
 const LEVELS: Rank[] = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 const BOT_DELAY = 650;
@@ -44,16 +44,28 @@ function validatedRules(patch: Partial<RuleConfig>): RuleConfig {
 
 export function createMatchStats(): MatchStats { return { rounds: 0, firsts: {}, sweeps: { A: 0, B: 0 }, bombs: {}, biggestBomb: 0, totalPlays: 0 }; }
 
-export function createRoom(roomId: string, hostId: string, nickname: string, rules: Partial<RuleConfig> = {}): GameState {
+export function createRoom(roomId: string, hostId: string, nickname: string, rules: Partial<RuleConfig> = {}, mode: RoomMode = 'friends'): GameState {
   requireThat(typeof roomId === 'string' && /^\d{6}$/.test(roomId), '房间号必须为六位数字');
   const state: GameState = {
-    roomId, hostId, players: [], rules: validatedRules(rules), status: 'waiting', round: 0,
+    roomId, hostId, mode, players: [], rules: validatedRules(rules), status: 'waiting', round: 0,
     currentLevel: '2', teamLevels: { A: '2', B: '2' }, currentTurnSeat: 1,
     lastPlay: null, lastPlaySeat: null, passSeats: [], finishOrder: [], tribute: [], tributeResisted: false,
     settlement: null, deadline: null, revision: 0, messages: [], totalPlays: 0, biggestBomb: 0, roundBomb: 0, playedCounts: {}, matchStats: createMatchStats(), createdAt: Date.now(),
   };
   addPlayer(state, hostId, nickname);
   return state;
+}
+
+const COMPUTER_NAMES = ['青竹','橘子','远山','麦穗','清风'];
+
+function fillComputerSeats(state: GameState) {
+  requireThat(state.mode === 'computer', '只有电脑局可以自动补位');
+  let index = state.players.filter(p => p.bot).length;
+  while (state.players.length < 6) {
+    const name = COMPUTER_NAMES[index++] ?? `电脑 ${index}`;
+    addPlayer(state, `bot-${state.roomId}-${index}`, name, true);
+  }
+  note(state, `真人不足六人，已补入 ${state.players.filter(p => p.bot).length} 位电脑`);
 }
 
 export function addPlayer(state: GameState, userId: string, nickname: string, bot = false): void {
@@ -257,7 +269,13 @@ function applyMutable(state: GameState, userId: string, action: GameAction, now:
     case 'start':
       requireThat(userId === state.hostId, '只有房主可以开始');
       requireThat(state.status === 'waiting', '当前不能开始游戏');
-      requireThat(state.players.length === 6 && state.players.every(p => p.ready), '需要六名玩家全部准备');
+      if (state.mode === 'computer') {
+        const humans = state.players.filter(p => !p.bot);
+        requireThat(humans.length >= 1 && humans.length <= 6 && humans.every(p => p.ready), '至少一名真人准备后即可开始电脑局');
+        fillComputerSeats(state);
+      } else {
+        requireThat(state.players.length === 6 && state.players.every(p => p.ready), '需要六名玩家全部准备');
+      }
       startRound(state,now);
       break;
     case 'next':

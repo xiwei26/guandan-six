@@ -115,7 +115,7 @@ export class GuandanGame {
   private async task(run:()=>Promise<void>){if(this.busy)return;this.busy=true;this.draw();try{await run();}catch(e){this.error(e);}finally{this.busy=false;this.draw();}}
   private async login(kind:'guest'|'wechat'){await this.task(async()=>{await this.api.login(kind,this.nickname);});}
   private enter(mode:'create'|'join'|'demo',id?:string){if(mode==='join'&&!/^\d{6}$/.test(id||'')){this.error(new Error('请输入六位房间号'));return;}
-    void this.task(async()=>{const epoch=this.epoch;const room=await this.api.enter(mode,mode==='create'?this.options:id);if(!this.visible||epoch!==this.epoch)return;this.accept(room);this.connect();});}
+    void this.task(async()=>{const epoch=this.epoch;const room=await this.api.enter(mode,mode==='create'?this.options:mode==='demo'?{waitForPlayers:true}:id);if(!this.visible||epoch!==this.epoch)return;this.accept(room);this.connect();});}
   private accept(room:RoomView){if(this.room?.roomId===room.roomId&&room.revision<this.room.revision)return;
     if(this.room?.round!==room.round||this.room?.totalPlays!==room.totalPlays)this.hintIndex=0;
     if(this.room?.round!==room.round||this.room?.roomId!==room.roomId){this.selected=[];this.groups=null;this.arranging=false;}
@@ -177,11 +177,12 @@ export class GuandanGame {
     }else{
       this.button('创建房间',584,146,296,()=>this.enter('create'),true,true);this.paint.arrow(855,166);
       this.button(this.invite?`加入邀请 ${this.invite}`:'输入房间号加入',584,199,296,()=>this.invite?this.enter('join',this.invite):this.input('六位房间号','',s=>this.enter('join',s),6));
-      this.button('体验一局 · 五位机器人',584,252,296,()=>this.enter('demo'));
-      this.button('返回上次房间',584,305,296,()=>void this.restore(this.api.roomId()),!!this.api.roomId());
-      this.button(`局数：${this.options.rounds==='A'?'打到 A':this.options.rounds}`,584,358,142,()=>{const list=[1,2,4,8,'A'] as const;this.options.rounds=list[(list.indexOf(this.options.rounds!)+1)%list.length];this.draw();});
-      this.button(`计时：${this.options.turnSeconds||'不限'}${this.options.turnSeconds?'秒':''}`,738,358,142,()=>{const list=[0,15,30,60] as const;this.options.turnSeconds=list[(list.indexOf(this.options.turnSeconds!)+1)%list.length];this.draw();});
-      this.button('更多房间设置',584,425,296,()=>this.roomOptions());
+      this.button('电脑局 · 1–6 位真人',584,252,296,()=>this.enter('demo'));
+      this.text('支持 1–6 位真人，不足六人时自动由电脑补位',584,305,12,C.paperMuted);
+      this.button('返回上次房间',584,329,296,()=>void this.restore(this.api.roomId()),!!this.api.roomId());
+      this.button(`局数：${this.options.rounds==='A'?'打到 A':this.options.rounds}`,584,382,142,()=>{const list=[1,2,4,8,'A'] as const;this.options.rounds=list[(list.indexOf(this.options.rounds!)+1)%list.length];this.draw();});
+      this.button(`计时：${this.options.turnSeconds||'不限'}${this.options.turnSeconds?'秒':''}`,738,382,142,()=>{const list=[0,15,30,60] as const;this.options.turnSeconds=list[(list.indexOf(this.options.turnSeconds!)+1)%list.length];this.draw();});
+      this.button('更多房间设置',584,449,296,()=>this.roomOptions());
     }
     this.paper=false;
     this.text('三人一队 · 六人开掼',745,519,12,C.muted);
@@ -195,7 +196,7 @@ export class GuandanGame {
   }
   private table(){const room=this.room!,vm=tableView(room,this.selected,this.sort),online=this.state==='online';
     this.paint.suit('♣',24,16,24,C.gold);this.paint.text('六人掼蛋',58,29,22,C.text,600,'serif');
-    this.text(`好友房 ${room.roomId}`,181,29,16,C.muted);
+    this.text(`${room.mode==='computer'?'电脑局':'好友房'} ${room.roomId}`,181,29,16,C.muted);
     this.text(`规则 ${room.rules.ruleVersion}${room.rules.ruleVersion==='6P_V1'?' · 旧版房间':''}`,24,68,13,C.muted);
     this.paint.line(24,48,628,48);
     this.text(`第 ${room.round} 局 · 打 ${room.currentLevel}`,354,28,17,C.gold);
@@ -216,12 +217,12 @@ export class GuandanGame {
       else {this.text(`${s.team}队`,x+13,y+61,10,team);if(s.host)this.text('房主',x+125,y+61,10,C.gold);}
       if(this.swapping)this.hits.push({x,y,w,h,run:()=>{if(!this.swapSeat){this.swapSeat=s.seat;this.draw();}else{this.act({type:'swap',seat:this.swapSeat,target:s.seat});this.swapping=false;this.swapSeat=0;}}});
     });
-    if(vm.waiting){this.text('等待六位牌友准备',318,185,28);this.text(`${vm.readyCount} / 6 已准备 · ${vm.roundText} · 隔位组队`,318,224,18,C.muted);
+    if(vm.waiting){const realCount=room.players.filter(p=>!p.bot).length;this.text(room.mode==='computer'?'真人不满六人，空位电脑补位':'等待六位牌友准备',318,185,28);this.text(room.mode==='computer'?`当前 ${realCount} 位真人 · ${vm.readyCount} 位已准备 · ${vm.roundText}`:`${vm.readyCount} / 6 已准备 · ${vm.roundText} · 隔位组队`,318,224,18,C.muted);
       this.button(vm.me.ready?'取消准备':'准备',272,258,140,()=>this.act({type:'ready',ready:!vm.me.ready}),online,true);
       this.button('开始',426,258,110,()=>this.act({type:'start'}),online&&vm.host&&vm.allReady);
       this.button('随机组队',550,258,130,()=>this.act({type:'shuffleTeams'}),online&&vm.host&&vm.canShuffle);
       this.button(this.swapping?`换座 ${this.swapSeat||'选座'}`:'调整座位',28,410,165,()=>{this.swapping=!this.swapping;this.swapSeat=0;this.draw();},online&&vm.host);
-      this.text('点击右上角邀请好友，或分享六位房间号。',245,453,20,C.muted);return;
+      this.text(room.mode==='computer'?'分享房间号邀请真人，空位会自动补电脑':'点击右上角邀请好友，或分享六位房间号。',245,453,20,C.muted);return;
     }
     this.paint.rect(289,151,382,38,'#0d372d',19,'#517660');this.paint.text(vm.turnLabel,306,170,20,C.gold,500,'sans-serif',250);
     const seconds=room.deadline===null?'不限时':`${Math.max(0,Math.ceil((room.deadline-Date.now())/1000))} 秒`;

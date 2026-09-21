@@ -11,7 +11,7 @@
   <view wx:if="{{!loggedIn}}" class="login-actions"><button class="primary" data-kind="wechat" bindtap="login" loading="{{busy}}" disabled="{{busy || !nickname}}">微信登录</button><button class="secondary" data-kind="guest" bindtap="login" disabled="{{busy || !nickname}}">游客进入</button><text class="hint">游客数据保存在当前设备，微信登录需服务端完成配置。</text></view>
   <view wx:else>
     <view class="button-row"><button class="primary" bindtap="openCreate" disabled="{{busy}}">＋ 创建房间</button><button class="secondary" bindtap="openJoin" disabled="{{busy}}">加入房间</button></view>
-    <button class="text-button demo" bindtap="enter" data-mode="demo" disabled="{{busy}}">先体验一局 <text>与 5 位体验机器人试玩</text></button>
+    <button class="text-button demo" bindtap="enter" data-mode="demo" disabled="{{busy}}">电脑局 · 1–6 位真人 <text>不足六人时自动由电脑补位</text></button>
     <button wx:if="{{resumeId}}" class="resume" bindtap="resume" disabled="{{busy}}">↩ 返回房间 {{resumeId}}</button>
   </view>
   <view wx:if="{{error && !modal}}" class="error" role="alert">{{error}}</view>

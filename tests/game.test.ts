@@ -74,6 +74,20 @@ test('room enforces fixed rules, six players, host start and readiness; server d
   assert.throws(() => addPlayer(state,'late','迟到'),/开始/);
 });
 
+test('computer rooms allow one to six real players and fill only the empty seats with bots', () => {
+  for (let realCount = 1; realCount <= 6; realCount++) {
+    const state = createRoom('123456','p1','真人 1',{},'computer');
+    for (let i = 2; i <= realCount; i++) addPlayer(state,`p${i}`,`真人 ${i}`);
+    for (const player of state.players) applyAction(state,player.userId,{type:'ready',ready:true});
+    applyAction(state,'p1',{type:'start'});
+    assert.equal(state.mode,'computer');
+    assert.equal(state.players.filter(player => !player.bot).length,realCount);
+    assert.equal(state.players.filter(player => player.bot).length,6-realCount);
+    assert.equal(state.players.length,6);
+    assert.ok(state.players.every(player => player.hand.length === 27));
+  }
+});
+
 test('only unready seats can swap; a prepared bystander does not prohibit other unready players swapping', () => {
   const state = room();
   applyAction(state,'p1',{ type: 'ready', ready: true });
