@@ -3,7 +3,7 @@ import { ArrowRight, Plus, LogIn, Play, RotateCcw, Users, Layers, Sprout } from 
 import type { RuleConfig, Session } from '../../shared/types';
 import { Modal } from './Modal';
 
-export function Home({session,busy,enter,resume,resumeId,error}:{session:Session|null;busy:boolean;enter:(nickname:string,mode:'create'|'join'|'demo',value?:Partial<RuleConfig>|string)=>Promise<unknown>;resume:()=>unknown;resumeId:string;error:string}) {
+export function Home({session,busy,enter,resume,leaveRoom,resumeId,error}:{session:Session|null;busy:boolean;enter:(nickname:string,mode:'create'|'join'|'demo',value?:Partial<RuleConfig>|string)=>Promise<unknown>;resume:()=>unknown;leaveRoom:()=>unknown;resumeId:string;error:string}) {
   const invitation=new URLSearchParams(location.search).get('room')??'';
   const [nickname,setNickname]=useState(session?.nickname??'');
   const [mode,setMode]=useState<'create'|'join'|null>(/^\d{6}$/.test(invitation)?'join':null);
@@ -31,7 +31,7 @@ export function Home({session,busy,enter,resume,resumeId,error}:{session:Session
           <div className="nickname-input"><span className="initial">{(session?.nickname||nickname||'你').slice(0,1)}</span><input id="nickname" placeholder="输入昵称" maxLength={20} value={session?.nickname??nickname} disabled={!!session} onChange={e=>setNickname(e.target.value)} autoComplete="nickname"/><span className="guest-label">游客</span></div>
           <div className="entry-buttons"><button className="button primary" onClick={()=>setMode('create')} disabled={busy}><Plus size={20}/>创建房间<ArrowRight className="button-tail" size={19}/></button><button className="button secondary" onClick={()=>setMode('join')} disabled={busy}><LogIn size={19}/>加入房间</button></div>
           <button className="text-button demo-link" disabled={busy||!valid} onClick={()=>enter(nickname,'demo')}><Play size={15}/> {busy?'正在连接牌桌…':'电脑局 · 1–6 位真人'} <span>不足六人时自动由电脑补位</span></button>
-          {resumeId&&<button className="resume-link" onClick={()=>resume()} disabled={busy}><RotateCcw size={16}/>返回房间 {resumeId}<ArrowRight size={16}/></button>}
+          {resumeId&&<div className="resume-actions"><button className="resume-link" onClick={()=>resume()} disabled={busy}><RotateCcw size={16}/>返回房间 {resumeId}<ArrowRight size={16}/></button><button className="text-button resume-exit" onClick={()=>leaveRoom()} disabled={busy}>退出房间</button></div>}
         </div>
       </div>
       <div className="home-art" aria-hidden="true">

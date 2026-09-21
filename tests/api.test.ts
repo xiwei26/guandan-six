@@ -127,6 +127,18 @@ test('computer room accepts additional real players and fills the remaining seat
   } finally {await app.close();}
 });
 
+test('leaving a waiting room releases the identity for a new computer room',async()=>{
+  const app=await launch();
+  try {
+    const player=await app.login('退出测试');
+    const created=await app.api('/api/rooms',player.token,{rules:{rounds:1}});
+    const roomId=(created.data.room as RoomView).roomId;
+    const left=await app.api(`/api/rooms/${roomId}/actions`,player.token,{action:{type:'leave'},revision:(created.data.room as RoomView).revision});
+    assert.equal(left.status,200);assert.equal(left.data.room,null);
+    assert.equal((await app.api('/api/demo',player.token,{waitForPlayers:true})).status,201);
+  } finally {await app.close();}
+});
+
 test('personal statistics are private and wechat login needs a configured appid',async()=>{
   const app=await launch({persist:false,tick:false});
   try {

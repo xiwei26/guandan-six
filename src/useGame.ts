@@ -55,6 +55,22 @@ export function useGame() {
     const result=await request<{room:RoomView}>(`/api/rooms/${resumeId}`,session);
     accept(result.room);return true;
   });
+  const leaveSavedRoom=()=>run(async()=>{
+    if(!session||!resumeId)return false;
+    let saved:RoomView;
+    try {
+      saved=(await request<{room:RoomView}>(`/api/rooms/${resumeId}`,session)).room;
+    } catch(cause) {
+      if(cause instanceof ApiError&&[403,404].includes(cause.status)) {
+        localStorage.removeItem(roomKey);setResumeId('');setRoom(null);return true;
+      }
+      throw cause;
+    }
+    if(!['waiting','finished'].includes(saved.status)) throw new Error('牌局已经开始，当前只能暂时离开；本局结束后才能完全退出。');
+    const result=await request<{room:RoomView|null}>(`/api/rooms/${saved.roomId}/actions`,session,{action:{type:'leave'},revision:saved.revision});
+    if(result.room)throw new Error('退出房间未完成，请重试');
+    localStorage.removeItem(roomKey);setResumeId('');setRoom(null);return true;
+  });
   useEffect(()=>{
     if(!session || !resumeId)return;
     let active=true;
@@ -87,5 +103,5 @@ export function useGame() {
     connect();
     return()=>{disposed=true;clearTimeout(retry);if(ws){ws.onclose=null;ws.onmessage=null;if(ws.readyState===WebSocket.CONNECTING)ws.onopen=()=>ws?.close();else ws.close();}setConnection('offline');};
   },[roomId,session?.token,accept]);
-  return {session,room,error,setError,busy,connection,enter,action,accept,report,resume,resumeId};
+  return {session,room,error,setError,busy,connection,enter,action,accept,report,resume,leaveSavedRoom,resumeId};
 }

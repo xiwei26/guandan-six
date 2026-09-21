@@ -56,3 +56,5 @@
   .stats-grid b { font-size: 21px; }.deal-overlay { inset: 50px 22%; }
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+/* Saved-room recovery controls */
+.resume-actions{display:flex;align-items:center;gap:10px;margin-top:10px}.resume-actions .resume-link{margin-top:0;width:auto;flex:1}.resume-exit{color:#954530;padding:7px 2px}
