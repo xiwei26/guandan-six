@@ -1,5 +1,14 @@
 export const WIDTH = 960;
 export const HEIGHT = 540;
+/** Waiting rooms use the space occupied by hands and play controls during a game. */
+export const WAITING_SEATS = [
+  {x:302,y:398,w:356,h:70},
+  {x:718,y:316,w:218,h:94},
+  {x:718,y:176,w:218,h:94},
+  {x:371,y:100,w:218,h:94},
+  {x:24,y:176,w:218,h:94},
+  {x:24,y:316,w:218,h:94},
+] as const;
 export function handLayout(count:number){
   const width=90,height=108,step=count>1?Math.min(48,(912-width)/(count-1)):0;
   return {width,height,step,left:(WIDTH-width-Math.max(0,count-1)*step)/2,top:376};

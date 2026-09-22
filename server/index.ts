@@ -14,7 +14,7 @@ interface SavedData { version: 1; rooms: GameState[]; sessions: [string,StoredSe
 interface Options { dataDir?: string; persist?: boolean; demo?: boolean; tick?: boolean; wechat?: {appId?:string;secret?:string;api?:string} }
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');
 const message = (error: unknown) => error instanceof Error ? error.message : '请求失败';
-class HttpError extends Error { constructor(public status: number, msg: string) { super(msg); } }
+class HttpError extends Error { constructor(public status: number, msg: string, public roomId?:string) { super(msg); } }
 
 export function createApplication(options: Options = {}) {
   const rooms = new Map<string,GameState>();
@@ -108,9 +108,12 @@ export function createApplication(options: Options = {}) {
     if (userId && !room.players.some(p=>p.userId===userId)) throw new HttpError(403,'你不在这个房间中');
     return room;
   }
+  function occupiedRoom(userId:string) {
+    return [...rooms.values()].find(r=>r.players.some(p=>p.userId===userId) && r.status!=='finished');
+  }
   function vacant(userId:string) {
-    const existing=[...rooms.values()].find(r=>r.players.some(p=>p.userId===userId) && r.status!=='finished');
-    if (existing) throw new HttpError(409,`你已在房间 ${existing.roomId} 中，请先返回或退出该房间`);
+    const existing=occupiedRoom(userId);
+    if (existing) throw new HttpError(409,`你已在房间 ${existing.roomId} 中，请先返回或退出该房间`,existing.roomId);
   }
   function allocate(session:StoredSession,rules:Parameters<typeof createRoom>[3],mode:Parameters<typeof createRoom>[4] = 'friends') {
     vacant(session.userId);
@@ -193,6 +196,7 @@ export function createApplication(options: Options = {}) {
         return json(res,200,await wechatLogin(code,nickname));
       }
       const session=authenticate(req.headers.authorization?.replace(/^Bearer /,''));
+      if (path==='/api/rooms/current' && req.method==='GET') return json(res,200,{roomId:occupiedRoom(session.userId)?.roomId??null});
       if (path==='/api/history' && req.method==='GET') {
         return json(res,200,{history:history.filter(h=>h.userIds.includes(session.userId)).slice(0,50).map(({userIds:_,...entry})=>entry)});
       }
@@ -233,7 +237,7 @@ export function createApplication(options: Options = {}) {
         return json(res,200,{hints:findHints(player.hand,room.lastPlay,room.currentLevel,room.rules)});
       }
       throw new HttpError(404,'接口不存在');
-    } catch(error) {json(res,error instanceof HttpError?error.status:400,{error:message(error)});}
+    } catch(error) {json(res,error instanceof HttpError?error.status:400,{error:message(error),...(error instanceof HttpError&&error.roomId?{roomId:error.roomId}:{})});}
   });
   const wss=new WebSocketServer({server,path:'/ws',maxPayload:16384});
   wss.on('connection',ws=>{

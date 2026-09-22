@@ -163,6 +163,22 @@ test('leaving a waiting room releases the identity for a new computer room',asyn
   } finally {await app.close();}
 });
 
+test('room discovery and create conflicts recover only the authenticated player membership',async()=>{
+  const app=await launch();
+  try{
+    const player=await app.login('房间记录丢失'),outsider=await app.login('其他玩家');
+    assert.equal((await app.api('/api/rooms/current')).status,401);
+    assert.equal((await app.api('/api/rooms/current',player.token)).data.roomId,null);
+    const roomId=(await app.api('/api/rooms',player.token,{})).data.room.roomId;
+    assert.equal((await app.api('/api/rooms/current',player.token)).data.roomId,roomId);
+    assert.equal((await app.api('/api/rooms/current',outsider.token)).data.roomId,null);
+    const conflict=await app.api('/api/demo',player.token,{waitForPlayers:true});
+    assert.equal(conflict.status,409);assert.equal(conflict.data.roomId,roomId);
+    await app.api(`/api/rooms/${roomId}/actions`,player.token,{action:{type:'leave'}});
+    assert.equal((await app.api('/api/rooms/current',player.token)).data.roomId,null);
+  }finally{await app.close();}
+});
+
 test('personal statistics are private and wechat login needs a configured appid',async()=>{
   const app=await launch({persist:false,tick:false});
   try {

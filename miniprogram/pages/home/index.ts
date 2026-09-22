@@ -6,14 +6,15 @@ Page({
     roundOptions:['打到 A（需打过 A）','1 局','2 局','4 局','8 局'],roundIndex:0,timeOptions:['15 秒','30 秒','60 秒','不限时'],timeIndex:1,
     showRemaining:true,allowAutoPlay:true,allowCounter:true,resistance:true},
   onLoad(query:Record<string,string|undefined>) { if(query.room&&/^\d{6}$/.test(query.room))this.setData({code:query.room,invited:true}); },
-  onShow() { this.refreshSession();if(this.data.invited&&this.data.loggedIn)this.setData({modal:'join'}); },
+  onShow() { this.refreshSession();if(this.data.invited&&this.data.loggedIn)this.setData({modal:'join'});void this.syncRoom(); },
+  async syncRoom(){if(this.data.busy||!client().session())return;try{await client().recoverRoom();}catch{/* Preserve cached room controls while offline. */}finally{this.refreshSession();}},
   refreshSession() { const s=client().session();this.setData({loggedIn:!!s,nickname:s?.nickname||this.data.nickname,provider:s?.provider==='wechat'?'微信牌友':'游客',resumeId:client().roomId()}); },
   inputNickname(event:WechatMiniprogram.Input) {this.setData({nickname:event.detail.value});},
   inputCode(event:WechatMiniprogram.Input) {this.setData({code:event.detail.value.replace(/\D/g,'').slice(0,6)});},
   async login(event:WechatMiniprogram.TouchEvent) {
     if(this.data.busy)return;this.setData({busy:true,error:''});
     try{await client().login(event.currentTarget.dataset.kind==='wechat'?'wechat':'guest',this.data.nickname);this.refreshSession();if(this.data.invited)this.setData({modal:'join'});}
-    catch(e){this.setData({error:errorMessage(e)});}finally{this.setData({busy:false});}
+    catch(e){this.setData({error:errorMessage(e)});}finally{this.setData({busy:false});}await this.syncRoom();
   },
   openCreate(){this.setData({modal:'create',error:''});},openJoin(){this.setData({modal:'join',error:''});},
   closeModal(){if(!this.data.busy)this.setData({modal:'',invited:false,error:''});},

@@ -20,7 +20,7 @@ async function harness(entry:'room'|'home'='room') {
   const room=(await api('/api/rooms',session.token,{})).data.room as RoomView;
   const roomKey=`gd6.${base}.room`;
   const storage=new Map<string,unknown>([['gd6.server',base],[`gd6.${base}.session`,session],[roomKey,room.roomId]]);
-  const control={holdSnapshot:false,dropLeaveReply:false,failLeave:false};
+  const control={holdSnapshot:false,dropLeaveReply:false,failLeave:false,legacy:false};
   const requests:{path:string;data:any}[]=[];
   const pending=new Set<Promise<void>>();
   const held:(()=>void)[]=[];
@@ -29,12 +29,15 @@ async function harness(entry:'room'|'home'='room') {
     getStorageSync:(key:string)=>storage.get(key),setStorageSync:(key:string,value:unknown)=>storage.set(key,value),removeStorageSync:(key:string)=>storage.delete(key),
     getAccountInfoSync:()=>({miniProgram:{envVersion:'develop'}}),onNetworkStatusChange(){},offNetworkStatusChange(){},showShareMenu(){},
     showModal:(options:any)=>{modal=options;},navigateBack:()=>navigations++,reLaunch:()=>navigations++,
+    navigateTo:(options:any)=>{navigations++;options.success?.();},
     connectSocket(){sockets++;return {onOpen(){},onClose(){},onError(){},onMessage(){},close(){}};},
     request(options:any){
       const path=options.url.slice(base.length);requests.push({path,data:options.data});
+      if(control.legacy&&path==='/api/rooms/current'){options.success({statusCode:404,data:{error:'接口不存在'}});return;}
       const leave=options.data?.action?.type==='leave';
       if(leave&&control.failLeave){options.fail({});return;}
       const request=api(path,session.token,options.data).then(result=>{
+        if(control.legacy)delete result.data.roomId;
         if(leave&&control.dropLeaveReply){control.dropLeaveReply=false;options.fail({});return;}
         const deliver=()=>options.success({statusCode:result.status,data:result.data});
         if(control.holdSnapshot&&options.method==='GET')held.push(deliver);else deliver();
@@ -63,6 +66,48 @@ test('mini exits during initial loading and ignores the late room snapshot',asyn
     assert.equal(h.storage.has(h.roomKey),false,'late GET must not restore the exited room');
     assert.equal(h.sockets(),0,'late GET must not reopen the room connection');
     assert.equal((await h.api('/api/demo',h.session.token,{waitForPlayers:true})).status,201);
+  }finally{await h.close();}
+});
+
+test('mini lobby discovers a server room after its local resume record is lost',async()=>{
+  const h=await harness('home');
+  try{
+    h.storage.delete(h.roomKey);h.page.refreshSession();assert.equal(h.page.data.resumeId,'');
+    h.page.onShow();await h.flush();
+    assert.equal(h.page.data.resumeId,h.room.roomId);
+    await h.page.leaveSavedRoom();assert.equal(h.page.data.resumeId,'');
+    await h.page.enter({currentTarget:{dataset:{mode:'demo'}}});
+    assert.equal(h.page.data.error,'');assert.equal(h.navigations(),1);
+    assert.notEqual(h.storage.get(h.roomKey),h.room.roomId);
+  }finally{await h.close();}
+});
+
+test('new and legacy server conflicts enable missing room recovery controls',async()=>{
+  for(const legacy of [false,true]){
+    const h=await harness('home');
+    try{
+      h.control.legacy=legacy;h.storage.delete(h.roomKey);h.page.refreshSession();
+      if(legacy){await h.page.syncRoom();assert.equal(h.page.data.resumeId,'');}
+      await h.page.enter({currentTarget:{dataset:{mode:'demo'}}});
+      assert.match(h.page.data.error,/已恢复/);assert.equal(h.page.data.resumeId,h.room.roomId);
+      await h.page.resume();assert.equal(h.navigations(),1);
+      await h.page.leaveSavedRoom();assert.equal(h.page.data.resumeId,'');
+      await h.page.enter({currentTarget:{dataset:{mode:'demo'}}});
+      assert.equal(h.page.data.error,'');assert.equal(h.navigations(),2);
+    }finally{await h.close();}
+  }
+});
+
+test('late room discovery cannot overwrite a room created after leaving the old one',async()=>{
+  const h=await harness('home');
+  try{
+    h.control.holdSnapshot=true;const discovery=h.page.syncRoom();await h.flush();
+    assert.equal(h.held.length,1);h.control.holdSnapshot=false;
+    await h.page.leaveSavedRoom();
+    await h.page.enter({currentTarget:{dataset:{mode:'demo'}}});
+    const newRoom=h.storage.get(h.roomKey);assert.ok(newRoom);assert.notEqual(newRoom,h.room.roomId);
+    h.held[0]();await discovery;
+    assert.equal(h.storage.get(h.roomKey),newRoom);assert.equal(h.page.data.resumeId,newRoom);
   }finally{await h.close();}
 });
 

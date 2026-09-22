@@ -82,12 +82,13 @@ export class Painter {
     this.rect(x+7,y+7,w-14,h-14,'transparent',12,'#d5d9c866');
   }
 
-  table() {
-    this.ellipse(480,205,302,117,'#082b25');
-    this.ellipse(480,200,300,116,'#486954');
-    this.ellipse(480,198,294,110,COLORS.felt,'#7b8960');
-    this.ellipse(480,198,279,96,'transparent','#70907455');
-    this.text('六 人 掼 蛋',422,263,16,'#66907b',400,'serif');
+  table(expanded=false) {
+    const y=expanded?284:198,rx=expanded?334:294,ry=expanded?166:110;
+    this.ellipse(480,y+7,rx+8,ry+7,'#082b25');
+    this.ellipse(480,y+2,rx+6,ry+6,'#486954');
+    this.ellipse(480,y,rx,ry,COLORS.felt,'#7b8960');
+    this.ellipse(480,y,rx-15,ry-14,'transparent','#70907455');
+    this.text('六 人 掼 蛋',422,expanded?369:263,16,'#66907b',400,'serif');
   }
 
   card(c:{label:string;symbol:string;red:boolean;wild:boolean;selected?:boolean},x:number,y:number,w:number,h:number) {

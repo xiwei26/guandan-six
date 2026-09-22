@@ -2,7 +2,7 @@ import { API_BASE_URL } from '../config';
 import type { Combination, GameAction, HistoryEntry, RoomView, RuleConfig, Session, StatsSummary } from '../shared/types';
 
 type Platform = Pick<typeof wx,'request'|'login'|'getStorageSync'|'setStorageSync'|'removeStorageSync'|'getAccountInfoSync'>;
-export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
+export class ApiError extends Error { constructor(public status: number, message: string, public roomId?:string) { super(message); } }
 export function normalizeServer(value: string, development: boolean): string {
   const url=value.trim().replace(/\/+$/,'');
   const match=url.match(/^(https?):\/\/([a-z0-9.-]+)(?::(\d{1,5}))?$/i);
@@ -19,6 +19,7 @@ export class MiniClient {
   setServer(value:string) {
     const development=this.platform.getAccountInfoSync().miniProgram.envVersion==='develop';
     const result=normalizeServer(value,development);
+    this.roomGeneration++;
     this.platform.setStorageSync('gd6.server',result);
   }
   session(): Session|null { const s=this.platform.getStorageSync(this.key('session'));return s&&typeof s.token==='string'&&typeof s.userId==='string'?s:null; }
@@ -35,7 +36,7 @@ export class MiniClient {
         success:result=>{
           if(result.statusCode>=200&&result.statusCode<300){resolve(result.data as T);return;}
           if(result.statusCode===401&&!anonymous)this.platform.removeStorageSync(`gd6.${base}.session`);
-          const error=result.data as {error?:string};reject(new ApiError(result.statusCode,error?.error||'请求失败，请重试'));
+          const error=result.data as {error?:string;roomId?:string};reject(new ApiError(result.statusCode,error?.error||'请求失败，请重试',error?.roomId));
         },
         fail:()=>reject(new ApiError(0,'连接失败，请检查服务是否启动、连接设置及微信合法域名配置'))
       });
@@ -50,12 +51,37 @@ export class MiniClient {
       session=await this.request<Session>('/api/wechat/login',{code,nickname:name},true);
     } else session=await this.request<Session>('/api/session',{nickname:name},true);
     if(this.server()!==base)throw new Error('服务地址已变更，请重新登录');
+    if(this.session()?.userId!==session.userId)this.remember('');
     this.platform.setStorageSync(`gd6.${base}.session`,session);return session;
   }
+  async recoverRoom():Promise<string> {
+    const session=this.session();if(!session)return '';
+    const base=this.server(),generation=this.roomGeneration;
+    try{
+      const result=await this.request<{roomId:string|null}>('/api/rooms/current');
+      if(base===this.server()&&session.token===this.session()?.token&&generation===this.roomGeneration
+        && (result.roomId===null||typeof result.roomId==='string'&&/^\d{6}$/.test(result.roomId)))this.remember(result.roomId||'');
+    }catch(e){if(!(e instanceof ApiError&&[404,405].includes(e.status)))throw e;}
+    return this.roomId(); // Older servers recover the room from their create/join conflict instead.
+  }
   async enter(mode:'create'|'join'|'demo',value?:Partial<RuleConfig>|string|{waitForPlayers:boolean}):Promise<RoomView> {
+    const base=this.server(),token=this.session()?.token;
+    this.roomGeneration++;
     const path=mode==='create'?'/api/rooms':mode==='demo'?'/api/demo':`/api/rooms/${value}/join`;
-    const result=await this.request<{room:RoomView}>(path,mode==='create'?{rules:value}:mode==='demo'?{waitForPlayers:true}:{});
-    this.remember(result.room.roomId);return result.room;
+    try{
+      const result=await this.request<{room:RoomView}>(path,mode==='create'?{rules:value}:mode==='demo'?{waitForPlayers:true}:{});
+      if(base!==this.server()||token!==this.session()?.token)throw new Error('登录或服务地址已变更，请重新进入');
+      this.remember(result.room.roomId);return result.room;
+    }catch(e){
+      if(e instanceof ApiError&&e.status===409&&base===this.server()&&token===this.session()?.token){
+        const id=e.roomId??e.message.match(/^你已在房间\s*(\d{6})\s*中/)?.[1];
+        if(typeof id==='string'&&/^\d{6}$/.test(id)){
+          this.remember(id);
+          throw new ApiError(409,`你仍在房间 ${id} 中。已恢复大厅的返回和退出入口，请先返回或退出该房间。`,id);
+        }
+      }
+      throw e;
+    }
   }
   async room(id:string):Promise<RoomView> { const generation=this.roomGeneration;const result=await this.request<{room:RoomView}>(`/api/rooms/${id}`);if(generation===this.roomGeneration)this.remember(id);return result.room; }
   async leave(id:string):Promise<RoomView|null> {

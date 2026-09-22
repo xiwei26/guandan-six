@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {build} from 'esbuild';
-import {viewport,hitAt,handLayout,lobbySpread} from '../game-src/layout';
+import {viewport,hitAt,handLayout,lobbySpread,WAITING_SEATS} from '../game-src/layout';
 import {createRoom,addPlayer,applyAction,getRoomView} from '../server/game';
 import {findHints} from '../shared/cards';
 import {handRows,validReturnCards} from '../miniprogram/utils/presentation';
@@ -23,6 +23,7 @@ function harness(loggedIn=false,screen={windowWidth:960,windowHeight:540,pixelRa
   const errors:string[]=[];
   let modal:any;
   const failures={leaveBefore:false,leaveAfter:false};
+  const recovery={roomId:null as string|null,legacyConflict:false};
   const timers=new Set<unknown>();
   const ctx={font:'18px sans-serif',setTransform(){},save(){},restore(){},beginPath(){},closePath(){},moveTo(){},lineTo(){},quadraticCurveTo(){},bezierCurveTo(){},fill(){},stroke(){},ellipse(){},arc(){},translate(){},rotate(){},scale(){},
     createLinearGradient(){return {addColorStop(){}};},
@@ -35,6 +36,8 @@ function harness(loggedIn=false,screen={windowWidth:960,windowHeight:540,pixelRa
     shareAppMessage(o:any){events.shared?.(o);},showModal(o:any){modal=o;errors.push(o.content);},showToast(){},hideKeyboard(){},showKeyboard(){},
     request(o:any){requests.push(o);let data:unknown;
       if(o.url.endsWith('/api/session'))data=session;
+      else if(o.url.endsWith('/api/rooms/current'))data={roomId:recovery.roomId};
+      else if(recovery.legacyConflict&&(o.url.endsWith('/api/demo')||o.url.endsWith('/api/rooms'))){o.success({statusCode:409,data:{error:`你已在房间 ${state.roomId} 中，请先返回或退出该房间`}});return;}
       else if(o.url.endsWith('/hints'))data={hints:findHints(state.players[0].hand,state.lastPlay,state.currentLevel,state.rules)};
       else if(o.url.endsWith('/actions')){
         actions.push(o.data.action);
@@ -55,7 +58,7 @@ function harness(loggedIn=false,screen={windowWidth:960,windowHeight:540,pixelRa
   const flush=async()=>{await new Promise(resolve=>setImmediate(resolve));};
   const click=(label:string)=>{const t=texts.find(t=>t.s===label);assert.ok(t,`missing button ${label}: ${texts.map(t=>t.s).join(',')}`);events.TouchStart({touches:[{clientX:t.x+3,clientY:t.y}]});events.TouchEnd();};
   const publish=()=>sockets.at(-1)?.message?.({data:JSON.stringify({type:'state',room:getRoomView(state,'p1')})});
-  return {events,texts:()=>texts,storage,state,actions,requests,sockets,errors,timers,flush,click,publish,modal:()=>modal,failures};
+  return {events,texts:()=>texts,storage,state,actions,requests,sockets,errors,timers,flush,click,publish,modal:()=>modal,failures,recovery};
 }
 
 test('game artifact is current and project opens a real game entry',async()=>{
@@ -68,6 +71,23 @@ test('game boots without DOM, Page or App and guest can accept a shared invitati
   const h=harness();assert.ok(h.texts().some(t=>t.s==='六人掼蛋'));h.click('游客体验');await h.flush();h.click('加入邀请 123456');await h.flush();h.publish();
   assert.ok(h.texts().some(t=>t.s==='等待六位牌友准备'));h.click('准备');await h.flush();assert.deepEqual(JSON.parse(JSON.stringify(h.actions)),[{type:'ready',ready:true}]);
   assert.equal(h.events.ShareAppMessage()?.query,'room=123456');h.events.Hide();assert.equal(h.timers.size,0);assert.equal(h.sockets[0].closed,true);
+});
+test('game restores disabled room controls from server discovery or a legacy create conflict',async()=>{
+  for(const source of ['discovery','legacy'] as const){
+    const h=harness(true);
+    try{
+      await h.flush();assert.equal(h.storage.has('gd6.http://127.0.0.1:3001.room'),false);
+      if(source==='discovery'){h.recovery.roomId=h.state.roomId;h.events.Show({});}
+      else{h.recovery.legacyConflict=true;h.click('创建房间');}
+      await h.flush();assert.equal(h.storage.get('gd6.http://127.0.0.1:3001.room'),h.state.roomId);
+      if(source==='discovery'){
+        h.click('返回上次房间');await h.flush();assert.ok(h.texts().some(t=>t.s==='等待六位牌友准备'));
+      }else{
+        assert.match(h.modal().content,/已恢复/);h.click('退出旧房');await h.flush();
+        assert.equal(h.storage.has('gd6.http://127.0.0.1:3001.room'),false);assert.equal(h.actions.at(-1)?.type,'leave');
+      }
+    }finally{h.events.Hide();}
+  }
 });
 test('game leaves a waiting room through HTTP before returning to the lobby',async()=>{
   for(const online of [false,true]){
@@ -84,6 +104,7 @@ test('game lobby can fully exit a saved computer game but keeps active friends m
   for(const mode of ['computer','friends'] as const){
     const h=harness(true);
     try{
+      await h.flush();h.recovery.roomId=h.state.roomId;
       h.state.mode=mode;for(const p of h.state.players)applyAction(h.state,p.userId,{type:'ready',ready:true});
       applyAction(h.state,'p1',{type:'start'});
       h.storage.set('gd6.http://127.0.0.1:3001.room',h.state.roomId);h.events.Show({});
@@ -140,9 +161,8 @@ test('computer room can shuffle, seat friends together and fill only vacant seat
     const host=h.state.players.find(p=>p.userId==='p1')!;
     const friend=h.state.players.find(p=>p.userId==='p2')!;
     const target=[1,2,3,4,5,6].find(seat=>seat%2===host.seat%2&&!h.state.players.some(p=>p.seat===seat))!;
-    const positions=[[424,300],[758,216],[758,106],[397,72],[28,106],[28,216]];
     const tapSeat=(seat:number)=>{
-      const [x,y]=positions[(seat-host.seat+6)%6];
+      const {x,y}=WAITING_SEATS[(seat-host.seat+6)%6];
       h.events.TouchStart({touches:[{clientX:x+10,clientY:y+10}]});h.events.TouchEnd();
     };
     h.click('调整座位');tapSeat(friend.seat);tapSeat(target);await h.flush();
