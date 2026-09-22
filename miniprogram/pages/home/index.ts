@@ -42,6 +42,20 @@ Page({
     catch(e){if(e instanceof ApiError&&[403,404].includes(e.status))client().remember('');this.setData({error:errorMessage(e)});this.refreshSession();}
     finally{this.setData({busy:false});}
   },
+  async leaveSavedRoom() {
+    if(this.data.busy||!this.data.resumeId)return;
+    this.setData({busy:true,error:''});
+    try{
+      const room=await client().room(this.data.resumeId);
+      if(!['waiting','finished'].includes(room.status))throw new Error('牌局已经开始，当前只能暂时离开；本局结束后才能完全退出。');
+      const left=await client().action(room,{type:'leave'});
+      if(left)throw new Error('退出房间未完成，请重试');
+      this.refreshSession();
+    }catch(e){
+      if(e instanceof ApiError&&[403,404].includes(e.status)){client().remember('');this.setData({error:''});this.refreshSession();}
+      else this.setData({error:errorMessage(e)});
+    }finally{this.setData({busy:false});}
+  },
   openRoom(id:string):Promise<void> { return new Promise((resolve,reject)=>wx.navigateTo({url:`/pages/room/index?id=${id}`,success:()=>resolve(),fail:()=>reject(new Error('无法打开牌桌，请点击返回房间重试'))})); },
   navigate(event:WechatMiniprogram.TouchEvent) {const page=event.currentTarget.dataset.page;if(['rules','history','settings'].includes(page))wx.navigateTo({url:`/pages/${page}/index`});},
   onShareAppMessage() {return {title:'六人掼蛋 · 三人一队，六人开掼',path:'/pages/home/index'};}

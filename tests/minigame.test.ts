@@ -21,6 +21,7 @@ function harness(loggedIn=false,screen={windowWidth:960,windowHeight:540,pixelRa
   const actions:GameAction[]=[];
   const sockets:{closed:boolean;message?:(e:{data:string})=>void}[]=[];
   const errors:string[]=[];
+  let modal:any;
   const timers=new Set<unknown>();
   const ctx={font:'18px sans-serif',setTransform(){},save(){},restore(){},beginPath(){},closePath(){},moveTo(){},lineTo(){},quadraticCurveTo(){},bezierCurveTo(){},fill(){},stroke(){},ellipse(){},arc(){},translate(){},rotate(){},scale(){},
     createLinearGradient(){return {addColorStop(){}};},
@@ -30,11 +31,11 @@ function harness(loggedIn=false,screen={windowWidth:960,windowHeight:540,pixelRa
   const wx:any={createCanvas:()=>canvas,getSystemInfoSync:()=>screen,
     getStorageSync:(k:string)=>storage.get(k),setStorageSync:(k:string,v:unknown)=>storage.set(k,v),removeStorageSync:(k:string)=>storage.delete(k),
     getAccountInfoSync:()=>({miniProgram:{envVersion:'develop'}}),getLaunchOptionsSync:()=>({query:{room:'123456'}}),showShareMenu(){},
-    shareAppMessage(o:any){events.shared?.(o);},showModal(o:any){errors.push(o.content);},showToast(){},hideKeyboard(){},showKeyboard(){},
+    shareAppMessage(o:any){events.shared?.(o);},showModal(o:any){modal=o;errors.push(o.content);},showToast(){},hideKeyboard(){},showKeyboard(){},
     request(o:any){requests.push(o);let data:unknown;
       if(o.url.endsWith('/api/session'))data=session;
       else if(o.url.endsWith('/hints'))data={hints:findHints(state.players[0].hand,state.lastPlay,state.currentLevel,state.rules)};
-      else if(o.url.endsWith('/actions')){actions.push(o.data.action);applyAction(state,'p1',o.data.action);data={room:getRoomView(state,'p1')};}
+      else if(o.url.endsWith('/actions')){actions.push(o.data.action);applyAction(state,'p1',o.data.action);data=o.data.action.type==='leave'?{room:null}:{room:getRoomView(state,'p1')};}
       else data={room:getRoomView(state,'p1')};
       o.success({statusCode:200,data});
     },
@@ -47,7 +48,7 @@ function harness(loggedIn=false,screen={windowWidth:960,windowHeight:540,pixelRa
   const flush=async()=>{await new Promise(resolve=>setImmediate(resolve));};
   const click=(label:string)=>{const t=texts.find(t=>t.s===label);assert.ok(t,`missing button ${label}: ${texts.map(t=>t.s).join(',')}`);events.TouchStart({touches:[{clientX:t.x+3,clientY:t.y}]});events.TouchEnd();};
   const publish=()=>sockets.at(-1)?.message?.({data:JSON.stringify({type:'state',room:getRoomView(state,'p1')})});
-  return {events,texts:()=>texts,storage,state,actions,requests,sockets,errors,timers,flush,click,publish};
+  return {events,texts:()=>texts,storage,state,actions,requests,sockets,errors,timers,flush,click,publish,modal:()=>modal};
 }
 
 test('game artifact is current and project opens a real game entry',async()=>{
@@ -60,6 +61,12 @@ test('game boots without DOM, Page or App and guest can accept a shared invitati
   const h=harness();assert.ok(h.texts().some(t=>t.s==='六人掼蛋'));h.click('游客体验');await h.flush();h.click('加入邀请 123456');await h.flush();h.publish();
   assert.ok(h.texts().some(t=>t.s==='等待六位牌友准备'));h.click('准备');await h.flush();assert.deepEqual(JSON.parse(JSON.stringify(h.actions)),[{type:'ready',ready:true}]);
   assert.equal(h.events.ShareAppMessage()?.query,'room=123456');h.events.Hide();assert.equal(h.timers.size,0);assert.equal(h.sockets[0].closed,true);
+});
+test('game leaves a waiting room through HTTP before returning to the lobby',async()=>{
+  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();h.publish();
+  h.click('大厅');assert.equal(h.modal()?.content,'离开将让出座位。');h.modal()?.success({confirm:true});await h.flush();
+  assert.equal(h.actions.at(-1)?.type,'leave');assert.equal(h.storage.has('gd6.http://127.0.0.1:3001.room'),false);
+  assert.ok(h.texts().some(t=>t.s==='电脑局 · 1–6 位真人'));h.events.Hide();
 });
 test('computer room can shuffle, seat friends together and fill only vacant seats on start',async()=>{
   const h=harness(true);

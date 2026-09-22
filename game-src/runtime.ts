@@ -130,12 +130,13 @@ export class GuandanGame {
     try{const room=await this.api.room(id);if(epoch!==this.epoch||!this.visible)return;this.accept(room);this.connect();}
     catch(e){if(epoch!==this.epoch||!this.visible)return;this.state='offline';
       if(e instanceof ApiError&&[401,403,404].includes(e.status)){if(e.status!==401)this.api.remember('');this.home();}this.error(e);this.draw();}}
-  private act(action:GameAction){if(!this.room||this.state!=='online')return;
+  private act(action:GameAction){if(!this.room||(this.state!=='online'&&action.type!=='leave'))return;
     const room=this.room,epoch=this.epoch;void this.task(async()=>{try{const next=await this.api.action(room,action);if(epoch!==this.epoch||!this.visible)return;
       if(action.type==='leave'){this.home();return;}if(next)this.accept(next);if(action.type==='play')this.selected=[];
     }catch(e){if(epoch===this.epoch&&this.visible)await this.restore(room.roomId);throw e;}});}
   private home(){this.epoch++;this.connection?.stop();this.room=null;this.state='offline';this.selected=[];this.overlay=undefined;this.swapping=false;this.swapSeat=0;this.draw();}
-  private leave(){this.platform.showModal({title:'返回大厅',content:this.room?.status==='waiting'?'离开将让出座位。':'进行中的牌局将保留座位，可从大厅返回。',success:r=>{if(r.confirm){if(this.state==='online')this.act({type:'leave'});else this.home();}}});}
+  private leaveSavedRoom(){const id=this.api.roomId();if(!id)return;void this.task(async()=>{try{const room=await this.api.room(id);if(!['waiting','finished'].includes(room.status))throw new Error('牌局已经开始，当前只能暂时离开；本局结束后才能完全退出。');const left=await this.api.action(room,{type:'leave'});if(left)throw new Error('退出房间未完成，请重试');this.api.remember('');this.draw();}catch(e){if(e instanceof ApiError&&[403,404].includes(e.status)){this.api.remember('');this.draw();return;}throw e;}});}
+  private leave(){this.platform.showModal({title:'返回大厅',content:this.room?.status==='waiting'?'离开将让出座位。':'进行中的牌局将保留座位，可从大厅返回。',success:r=>{if(r.confirm&&this.room)void this.act({type:'leave'});}});}
   private hint(){if(!this.room)return;const room=this.room;void this.task(async()=>{const hints=await this.api.hints(room.roomId);if(this.room?.revision!==room.revision||this.room.roomId!==room.roomId)return;
     this.selected=hints.length?hints[this.hintIndex++%hints.length].cards.map(c=>c.id):[];if(!hints.length)this.platform.showToast({title:'没有能压过的牌',icon:'none'});});}
   private panel(title:string,lines:string[]){this.overlay={title,lines,page:0};this.draw();}
@@ -179,7 +180,7 @@ export class GuandanGame {
       this.button(this.invite?`加入邀请 ${this.invite}`:'输入房间号加入',584,199,296,()=>this.invite?this.enter('join',this.invite):this.input('六位房间号','',s=>this.enter('join',s),6));
       this.button('电脑局 · 1–6 位真人',584,252,296,()=>this.enter('demo'));
       this.text('支持 1–6 位真人，不足六人时自动由电脑补位',584,305,12,C.paperMuted);
-      this.button('返回上次房间',584,329,296,()=>void this.restore(this.api.roomId()),!!this.api.roomId());
+      this.button('返回上次房间',584,329,190,()=>void this.restore(this.api.roomId()),!!this.api.roomId());this.button('退出旧房',784,329,96,()=>this.leaveSavedRoom(),!!this.api.roomId());
       this.button(`局数：${this.options.rounds==='A'?'打到 A':this.options.rounds}`,584,382,142,()=>{const list=[1,2,4,8,'A'] as const;this.options.rounds=list[(list.indexOf(this.options.rounds!)+1)%list.length];this.draw();});
       this.button(`计时：${this.options.turnSeconds||'不限'}${this.options.turnSeconds?'秒':''}`,738,382,142,()=>{const list=[0,15,30,60] as const;this.options.turnSeconds=list[(list.indexOf(this.options.turnSeconds!)+1)%list.length];this.draw();});
       this.button('更多房间设置',584,449,296,()=>this.roomOptions());

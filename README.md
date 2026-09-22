@@ -57,6 +57,8 @@ npm run dev:server
 
 如果网络中断或页面刷新导致首页仍显示「返回房间」，可点击旁边的「退出房间」清理等待中或已结束的旧房间，再创建新房间；进行中的牌局仍只能暂时离开，座位会保留到本局结束。
 
+微信小游戏和旧小程序的「返回大厅」会优先通过 HTTP 提交退出动作，即使 WebSocket 尚未连接也会释放等待中的座位；首页的「退出旧房间」用于清理之前网络中断留下的等待房间。
+
 VPS 联网测试域名为 `gd6.super-idol.com`，小游戏默认连接 `https://gd6.super-idol.com`。Docker 部署、自动 HTTPS/WSS、持久化、更新和备份见 [VPS 部署说明](deploy/README.md)。`compose.yaml` 默认只启动应用；空闲 VPS 加 `--profile https` 才启用 Caddy，已有网站应复用原反向代理。
 
 需要 Node.js 22.12+（开发验证环境为 Node.js 24）。

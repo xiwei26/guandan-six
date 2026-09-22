@@ -59,7 +59,7 @@ Page({
   sort(){this._sort=this._sort==='rank'?'suit':'rank';this.setData({sortLabel:this._sort==='rank'?'按点数':'按花色'});this.renderSelection();},
   clear(){this._selected=[];this.renderSelection();},
   async act(action:GameAction):Promise<boolean> {
-    if(!this._room||this._pending||this.data.connection!=='online')return false;
+    if(!this._room||this._pending||(this.data.connection!=='online'&&action.type!=='leave'))return false;
     this._pending=true;this.setData({busy:true,error:''});
     try{
       const next=await client().action(this._room,action);
@@ -92,7 +92,7 @@ Page({
   copy(){wx.setClipboardData({data:this.data.roomId,success:()=>wx.showToast({title:'房间号已复制',icon:'none'})});},
   async leave(){if(!this._room){this.goHome();return;}const finished=this._room.status==='finished';
     if(finished){await this.act({type:'leave'});return;}
-    wx.showModal({title:'返回大厅？',content:this._room.status==='waiting'?'你将让出当前座位。':'牌局继续，座位会保留。下次可从大厅返回本房间。',confirmText:'返回大厅',success:r=>{if(r.confirm){if(this.data.connection==='online')void this.act({type:'leave'});else this.goHome();}}});
+    wx.showModal({title:'返回大厅？',content:this._room.status==='waiting'?'你将让出当前座位。':'牌局继续，座位会保留。下次可从大厅返回本房间。',confirmText:'返回大厅',success:r=>{if(r.confirm)void this.act({type:'leave'});}});
   },
   goHome(){this.suspend();if(getCurrentPages().length>1)wx.navigateBack();else wx.reLaunch({url:'/pages/home/index'});},
   stopTap(){},

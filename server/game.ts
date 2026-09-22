@@ -259,6 +259,26 @@ function exchange(state: GameState, player: Player, cardId: string | undefined, 
 
 function applyMutable(state: GameState, userId: string, action: GameAction, now: number) {
   requireThat(action && typeof action === 'object' && typeof action.type === 'string', '操作格式错误');
+  // leave 操作可能在玩家已被移除时调用（例如重复点击），需要特殊处理
+  if (action.type === 'leave') {
+    const player = state.players.find(p => p.userId === userId);
+    if (!player) return; // 玩家已经不在房间中，静默成功
+    // 电脑局可以随时完全退出，因为其他都是机器人
+    // 等待中或已结束的房间也可以完全退出
+    if (state.mode === 'computer' || state.status === 'waiting' || state.status === 'finished') {
+      state.players = state.players.filter(p => p.userId !== userId);
+      if (state.hostId === userId) state.hostId = state.players.find(p => !p.bot)?.userId ?? state.players[0]?.userId ?? '';
+      note(state, `${player.nickname} 离开了房间`);
+    } else {
+      // 好友局游戏中只能暂时离开，保留座位
+      player.connected = false;
+      if (state.rules.allowAutoPlay) player.autoPlay = true;
+      if (player.userId === state.hostId) state.hostId = state.players.find(p => p.connected && !p.bot && p.userId !== userId)?.userId ?? state.hostId;
+      if (state.status === 'tribute' || player.seat === state.currentTurnSeat) scheduleDeadline(state,now);
+      note(state, `${player.nickname} 暂时离开，保留座位以便重连`);
+    }
+    return;
+  }
   const player = member(state,userId);
   switch (action.type) {
     case 'ready':
@@ -350,19 +370,6 @@ function applyMutable(state: GameState, userId: string, action: GameAction, now:
     case 'tribute':
       requireThat(action.cardId === undefined || typeof action.cardId === 'string', '贡牌格式错误');
       exchange(state,player,action.cardId,now);
-      break;
-    case 'leave':
-      if (state.status === 'waiting' || state.status === 'finished') {
-        state.players = state.players.filter(p => p.userId !== userId);
-        if (state.hostId === userId) state.hostId = state.players.find(p => !p.bot)?.userId ?? state.players[0]?.userId ?? '';
-        note(state, `${player.nickname} 离开了房间`);
-      } else {
-        player.connected = false;
-        if (state.rules.allowAutoPlay) player.autoPlay = true;
-        if (player.userId === state.hostId) state.hostId = state.players.find(p => p.connected && !p.bot && p.userId !== userId)?.userId ?? state.hostId;
-        if (state.status === 'tribute' || player.seat === state.currentTurnSeat) scheduleDeadline(state,now);
-        note(state, `${player.nickname} 暂时离开，保留座位以便重连`);
-      }
       break;
     default:
       throw new Error('不支持的操作');

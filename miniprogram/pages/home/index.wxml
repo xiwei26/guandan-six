@@ -12,7 +12,7 @@
   <view wx:else>
     <view class="button-row"><button class="primary" bindtap="openCreate" disabled="{{busy}}">＋ 创建房间</button><button class="secondary" bindtap="openJoin" disabled="{{busy}}">加入房间</button></view>
     <button class="text-button demo" bindtap="enter" data-mode="demo" disabled="{{busy}}">电脑局 · 1–6 位真人 <text>不足六人时自动由电脑补位</text></button>
-    <button wx:if="{{resumeId}}" class="resume" bindtap="resume" disabled="{{busy}}">↩ 返回房间 {{resumeId}}</button>
+    <button wx:if="{{resumeId}}" class="resume" bindtap="resume" disabled="{{busy}}">↩ 返回房间 {{resumeId}}</button><button wx:if="{{resumeId}}" class="resume-exit" bindtap="leaveSavedRoom" disabled="{{busy}}">退出旧房间</button>
   </view>
   <view wx:if="{{error && !modal}}" class="error" role="alert">{{error}}</view>
   <view class="home-rules"><view><text class="rule-icon">六</text><view><text>多两个人，多一份配合</text><view class="muted">三人组队，隔位而坐</view></view></view><view><text class="rule-icon">牌</text><view><text>三副牌，依然每人 27 张</text><view class="muted">熟悉的牌型，不变的上手方式</view></view></view><view><text class="rule-icon">升</text><view><text>一起争头游，一起升等级</text><view class="muted">对方包揽末三名，升 4 级</view></view></view></view>
