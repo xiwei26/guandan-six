@@ -109,7 +109,7 @@ export function createApplication(options: Options = {}) {
     return room;
   }
   function vacant(userId:string) {
-    const existing=[...rooms.values()].find(r=>r.players.some(p=>p.userId===userId && p.connected) && r.status!=='finished');
+    const existing=[...rooms.values()].find(r=>r.players.some(p=>p.userId===userId) && r.status!=='finished');
     if (existing) throw new HttpError(409,`你已在房间 ${existing.roomId} 中，请先返回或退出该房间`);
   }
   function allocate(session:StoredSession,rules:Parameters<typeof createRoom>[3],mode:Parameters<typeof createRoom>[4] = 'friends') {
@@ -131,7 +131,7 @@ export function createApplication(options: Options = {}) {
       throw new HttpError(409,'牌局已更新，请根据当前牌面重新操作');
     applyAction(room,session.userId,action);
     broadcast(room);
-    if (!room.players.length) {rooms.delete(room.roomId);save();}
+    if (!room.players.some(p=>!p.bot)) {rooms.delete(room.roomId);save();}
     return {room:room.players.some(p=>p.userId===session.userId)?getRoomView(room,session.userId):null};
   }
   const rate = new Map<string,{count:number;until:number}>();
@@ -214,10 +214,14 @@ export function createApplication(options: Options = {}) {
       const route=path.match(/^\/api\/rooms\/(\d{6})(?:\/(join|actions|hints))?$/);
       if (!route) throw new HttpError(404,'接口不存在');
       const [,roomId,operation]=route;
-      const room=roomFor(roomId,operation==='join'?undefined:session.userId);
-      if (!operation && req.method==='GET') return json(res,200,{room:getRoomView(room,session.userId)});
+      if (!operation && req.method==='GET') return json(res,200,{room:getRoomView(roomFor(roomId,session.userId),session.userId)});
       if (req.method!=='POST') throw new HttpError(405,'不支持的请求方式');
       const data=await body(req);
+      // An authenticated user may retry their own leave after losing its response.
+      // Do not bypass membership checks for reads or any other action.
+      if (operation==='actions' && (data.action as GameAction|undefined)?.type==='leave'
+        && !rooms.get(roomId)?.players.some(p=>p.userId===session.userId)) return json(res,200,{room:null});
+      const room=roomFor(roomId,operation==='join'?undefined:session.userId);
       if (operation==='join') {
         if (!room.players.some(p=>p.userId===session.userId)) {vacant(session.userId);addPlayer(room,session.userId,session.nickname);}
         broadcast(room);return json(res,200,{room:getRoomView(room,session.userId)});

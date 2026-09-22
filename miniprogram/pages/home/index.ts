@@ -1,5 +1,6 @@
 import { ApiError,client,errorMessage } from '../../services/client';
 import type { RuleConfig } from '../../shared/types';
+import { canLeaveCompletely } from '../../utils/room-exit';
 Page({
   data:{nickname:'',loggedIn:false,provider:'游客',resumeId:'',invited:false,code:'',modal:'',busy:false,error:'',
     roundOptions:['打到 A（需打过 A）','1 局','2 局','4 局','8 局'],roundIndex:0,timeOptions:['15 秒','30 秒','60 秒','不限时'],timeIndex:1,
@@ -47,9 +48,9 @@ Page({
     this.setData({busy:true,error:''});
     try{
       const room=await client().room(this.data.resumeId);
-      if(!['waiting','finished'].includes(room.status))throw new Error('牌局已经开始，当前只能暂时离开；本局结束后才能完全退出。');
-      const left=await client().action(room,{type:'leave'});
-      if(left)throw new Error('退出房间未完成，请重试');
+      if(!canLeaveCompletely(room))throw new Error('好友牌局仍在进行，请返回原房间；本场结束后才能完全退出。');
+      const left=await client().leave(room.roomId);
+      if(left)throw new Error('好友牌局已开始，座位已保留，请返回原房间。');
       this.refreshSession();
     }catch(e){
       if(e instanceof ApiError&&[403,404].includes(e.status)){client().remember('');this.setData({error:''});this.refreshSession();}

@@ -102,6 +102,7 @@ test('server restart restores game and hashed credentials; invalid tokens cannot
     const restored=await app.api(`/api/rooms/${view.roomId}`,player.token);
     assert.equal(restored.status,200);
     assert.deepEqual(restored.data.room.hand,view.hand);
+    assert.equal((await app.api('/api/rooms',player.token,{})).status,409,'restart must not release an occupied seat');
     assert.equal((await app.api(`/api/rooms/${view.roomId}`,'0'.repeat(64))).status,401);
   } finally {await app.close();await rm(directory,{recursive:true,force:true});}
 });
@@ -140,11 +141,10 @@ test('computer room allows players to leave completely during game',async()=>{
     assert.ok(['playing', 'tribute'].includes(roomView.status));
     // 游戏中离开电脑局应该完全退出，而不是保留座位
     const left=await app.api(`/api/rooms/${roomId}/actions`,player.token,{action:{type:'leave'}});
-    if (left.status !== 200) {
-      console.log('Leave failed:', JSON.stringify(left.data, null, 2));
-      console.log('Room status before leave:', roomView.status);
-    }
     assert.equal(left.status,200, `Leave failed: ${JSON.stringify(left.data)}`);
+    assert.equal(left.data.room,null);
+    assert.equal(app.rooms.has(roomId),false,'no-human computer rooms must be removed');
+    assert.equal((await app.api(`/api/rooms/${roomId}/actions`,player.token,{action:{type:'leave'}})).status,200);
     // 离开后应该可以立即创建新房间
     const newRoom=await app.api('/api/rooms',player.token,{rules:{rounds:1}});
     assert.equal(newRoom.status,201);
@@ -200,6 +200,91 @@ test('wechat login exchanges a code for a stable identity through jscode2session
     assert.equal((await app.api('/api/rooms',first.token,{rules:{rounds:1}})).status,201);
     assert.equal((await app.api('/api/rooms',again.token,{rules:{rounds:1}})).status,409);
   } finally {await app.close();provider.close();}
+});
+
+test('repeated leave succeeds without exposing or mutating another player room',async()=>{
+  const app=await launch();
+  try{
+    const host=await app.login('甲'),friend=await app.login('乙'),outsider=await app.login('外部玩家');
+    const roomId=(await app.api('/api/rooms',host.token,{})).data.room.roomId;
+    await app.api(`/api/rooms/${roomId}/join`,friend.token,{});
+    const path=`/api/rooms/${roomId}/actions`;
+    assert.equal((await app.api(path,host.token,{action:{type:'leave'}})).data.room,null);
+    const before=structuredClone(app.rooms.get(roomId));
+    for(const token of [host.token,outsider.token]){
+      const repeat=await app.api(path,token,{action:{type:'leave'}});
+      assert.equal(repeat.status,200);assert.equal(repeat.data.room,null);
+      assert.equal((await app.api(`/api/rooms/${roomId}`,token)).status,403);
+      assert.equal((await app.api(path,token,{action:{type:'ready',ready:true}})).status,403);
+    }
+    assert.deepEqual(app.rooms.get(roomId),before);
+    assert.equal((await app.api(path,undefined,{action:{type:'leave'}})).status,401);
+    assert.equal((await app.api('/api/rooms',host.token,{})).status,201);
+  }finally{await app.close();}
+});
+
+test('mixed computer leave releases only the departing identity and cleans up after the last human',async()=>{
+  const app=await launch();
+  try{
+    const host=await app.login('甲'),friend=await app.login('乙');
+    const roomId=(await app.api('/api/demo',host.token,{waitForPlayers:true})).data.room.roomId;
+    await app.api(`/api/rooms/${roomId}/join`,friend.token,{});
+    const path=`/api/rooms/${roomId}/actions`;
+    await app.api(path,friend.token,{action:{type:'ready',ready:true}});
+    await app.api(path,host.token,{action:{type:'start'}});
+    assert.equal((await app.api(path,host.token,{action:{type:'leave'}})).data.room,null);
+    const view=(await app.api(`/api/rooms/${roomId}`,friend.token)).data.room as RoomView;
+    assert.equal(view.players.length,6);assert.equal(view.players.filter(p=>p.bot).length,5);
+    assert.equal(view.hostId,friend.userId);
+    assert.equal((await app.api(`/api/rooms/${roomId}`,host.token)).status,403);
+    assert.equal((await app.api('/api/rooms',host.token,{})).status,201);
+    assert.equal((await app.api('/api/rooms',friend.token,{})).status,409);
+    assert.equal((await app.api(path,friend.token,{action:{type:'leave'}})).data.room,null);
+    assert.equal(app.rooms.has(roomId),false);
+  }finally{await app.close();}
+});
+
+test('disconnection keeps the original membership until an explicit waiting-room leave',async()=>{
+  const app=await launch();const sockets:WebSocket[]=[];
+  try{
+    const player=await app.login('甲'),friend=await app.login('乙'),other=await app.login('丙');
+    const roomId=(await app.api('/api/rooms',player.token,{})).data.room.roomId;
+    await app.api(`/api/rooms/${roomId}/join`,friend.token,{});
+    const otherRoom=(await app.api('/api/rooms',other.token,{})).data.room.roomId;
+    for(const session of [player,friend]){
+      const ws=new WebSocket(app.base.replace('http:','ws:')+'/ws');sockets.push(ws);
+      await once(ws,'open');const state=nextState(ws);
+      ws.send(JSON.stringify({type:'auth',roomId,token:session.token}));await state;
+    }
+    const disconnected=nextState(sockets[1],r=>!r.players.find(p=>p.userId===player.userId)!.connected);
+    sockets[0].close();await disconnected;
+    assert.equal((await app.api('/api/demo',player.token,{waitForPlayers:true})).status,409);
+    assert.equal((await app.api(`/api/rooms/${otherRoom}/join`,player.token,{})).status,409);
+    assert.equal((await app.api(`/api/rooms/${roomId}`,player.token)).status,200);
+    assert.equal((await app.api(`/api/rooms/${roomId}/actions`,player.token,{action:{type:'leave'}})).data.room,null);
+    assert.equal((await app.api('/api/demo',player.token,{waitForPlayers:true})).status,201);
+    assert.equal((await app.api(`/api/rooms/${roomId}`,player.token)).status,403);
+  }finally{sockets.forEach(ws=>ws.terminate());await app.close();}
+});
+
+test('active friends leave keeps the seat and blocks a second room',async()=>{
+  const app=await launch();
+  try{
+    const players:Session[]=[];for(let i=0;i<6;i++)players.push(await app.login(`玩家${i}`));
+    const roomId=(await app.api('/api/rooms',players[0].token,{})).data.room.roomId;
+    const path=`/api/rooms/${roomId}/actions`;
+    for(const player of players){
+      if(player!==players[0])await app.api(`/api/rooms/${roomId}/join`,player.token,{});
+      await app.api(path,player.token,{action:{type:'ready',ready:true}});
+    }
+    await app.api(path,players[0].token,{action:{type:'start'}});
+    const before=(await app.api(`/api/rooms/${roomId}`,players[0].token)).data.room as RoomView;
+    const left=(await app.api(path,players[0].token,{action:{type:'leave'}})).data.room as RoomView;
+    assert.deepEqual(left.hand,before.hand);assert.equal(left.players.length,6);
+    assert.equal(left.players.find(p=>p.userId===players[0].userId)?.connected,false);
+    assert.equal((await app.api('/api/demo',players[0].token,{waitForPlayers:true})).status,409);
+    assert.equal((await app.api(`/api/rooms/${roomId}`,players[0].token)).status,200);
+  }finally{await app.close();}
 });
 
 test('disconnected players can create new rooms after leaving',async()=>{

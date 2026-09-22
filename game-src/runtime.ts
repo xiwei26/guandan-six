@@ -1,6 +1,7 @@
 import { MiniClient, ApiError, errorMessage } from '../miniprogram/services/client';
 import { RoomConnection, type ConnectionState } from '../miniprogram/services/connection';
 import { tableView, DEFAULT_OPTIONS, cardView } from '../miniprogram/utils/presentation';
+import { canLeaveCompletely, leaveMessage } from '../miniprogram/utils/room-exit';
 import {arrangeHand,reconcileGroups,manualGroup,groupCards,type HandGroup} from './arrangement';
 import type { RoomView, GameAction, RuleConfig } from '../shared/types';
 import { WIDTH, HEIGHT, viewport, hitAt, handLayout, lobbySpread, type Hit } from './layout';
@@ -53,6 +54,7 @@ export class GuandanGame {
   private visible=true;
   private epoch=0;
   private busy=false;
+  private leaving=false;
   private selected:string[]=[];
   private sort:'rank'|'suit'='rank';
   private groups:HandGroup[]|null=null;
@@ -126,17 +128,23 @@ export class GuandanGame {
       room:r=>{if(epoch===this.epoch&&this.visible)this.accept(r);},state:s=>{if(epoch===this.epoch){this.state=s;this.draw();}},
       error:message=>{if(epoch===this.epoch)this.error(new Error(message));},left:()=>{if(epoch===this.epoch){this.api.remember('');this.home();}}
     });this.connection.start();}
-  private async restore(id:string){const epoch=++this.epoch;this.connection?.stop();this.state='connecting';this.draw();
+  private async restore(id:string){if(this.leaving)return;const epoch=++this.epoch;this.connection?.stop();this.state='connecting';this.draw();
     try{const room=await this.api.room(id);if(epoch!==this.epoch||!this.visible)return;this.accept(room);this.connect();}
     catch(e){if(epoch!==this.epoch||!this.visible)return;this.state='offline';
       if(e instanceof ApiError&&[401,403,404].includes(e.status)){if(e.status!==401)this.api.remember('');this.home();}this.error(e);this.draw();}}
   private act(action:GameAction){if(!this.room||(this.state!=='online'&&action.type!=='leave'))return;
+    if(action.type==='leave'){this.exitRoom();return;}
     const room=this.room,epoch=this.epoch;void this.task(async()=>{try{const next=await this.api.action(room,action);if(epoch!==this.epoch||!this.visible)return;
-      if(action.type==='leave'){this.home();return;}if(next)this.accept(next);if(action.type==='play')this.selected=[];
+      if(next)this.accept(next);if(action.type==='play')this.selected=[];
     }catch(e){if(epoch===this.epoch&&this.visible)await this.restore(room.roomId);throw e;}});}
+  private exitRoom(){const id=this.room?.roomId;if(!id)return;void this.task(async()=>{
+    this.leaving=true;this.epoch++;this.connection?.stop();this.state='offline';
+    try{await this.api.leave(id);if(this.room?.roomId===id)this.home();}
+    finally{this.leaving=false;}
+  });}
   private home(){this.epoch++;this.connection?.stop();this.room=null;this.state='offline';this.selected=[];this.overlay=undefined;this.swapping=false;this.swapSeat=0;this.draw();}
-  private leaveSavedRoom(){const id=this.api.roomId();if(!id)return;void this.task(async()=>{try{const room=await this.api.room(id);if(!['waiting','finished'].includes(room.status))throw new Error('牌局已经开始，当前只能暂时离开；本局结束后才能完全退出。');const left=await this.api.action(room,{type:'leave'});if(left)throw new Error('退出房间未完成，请重试');this.api.remember('');this.draw();}catch(e){if(e instanceof ApiError&&[403,404].includes(e.status)){this.api.remember('');this.draw();return;}throw e;}});}
-  private leave(){this.platform.showModal({title:'返回大厅',content:this.room?.status==='waiting'?'离开将让出座位。':'进行中的牌局将保留座位，可从大厅返回。',success:r=>{if(r.confirm&&this.room)void this.act({type:'leave'});}});}
+  private leaveSavedRoom(){const id=this.api.roomId();if(!id)return;void this.task(async()=>{try{const room=await this.api.room(id);if(!canLeaveCompletely(room))throw new Error('好友牌局仍在进行，请返回原房间；本场结束后才能完全退出。');const left=await this.api.leave(id);if(left)throw new Error('好友牌局已开始，座位已保留，请返回原房间。');this.draw();}catch(e){if(e instanceof ApiError&&[403,404].includes(e.status)){this.api.remember('');this.draw();return;}throw e;}});}
+  private leave(){const id=this.room?.roomId;this.platform.showModal({title:'返回大厅',content:leaveMessage(this.room),success:r=>{if(r.confirm&&this.room?.roomId===id)this.act({type:'leave'});}});}
   private hint(){if(!this.room)return;const room=this.room;void this.task(async()=>{const hints=await this.api.hints(room.roomId);if(this.room?.revision!==room.revision||this.room.roomId!==room.roomId)return;
     this.selected=hints.length?hints[this.hintIndex++%hints.length].cards.map(c=>c.id):[];if(!hints.length)this.platform.showToast({title:'没有能压过的牌',icon:'none'});});}
   private panel(title:string,lines:string[]){this.overlay={title,lines,page:0};this.draw();}

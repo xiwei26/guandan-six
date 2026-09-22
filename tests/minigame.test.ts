@@ -22,6 +22,7 @@ function harness(loggedIn=false,screen={windowWidth:960,windowHeight:540,pixelRa
   const sockets:{closed:boolean;message?:(e:{data:string})=>void}[]=[];
   const errors:string[]=[];
   let modal:any;
+  const failures={leaveBefore:false,leaveAfter:false};
   const timers=new Set<unknown>();
   const ctx={font:'18px sans-serif',setTransform(){},save(){},restore(){},beginPath(){},closePath(){},moveTo(){},lineTo(){},quadraticCurveTo(){},bezierCurveTo(){},fill(){},stroke(){},ellipse(){},arc(){},translate(){},rotate(){},scale(){},
     createLinearGradient(){return {addColorStop(){}};},
@@ -35,7 +36,13 @@ function harness(loggedIn=false,screen={windowWidth:960,windowHeight:540,pixelRa
     request(o:any){requests.push(o);let data:unknown;
       if(o.url.endsWith('/api/session'))data=session;
       else if(o.url.endsWith('/hints'))data={hints:findHints(state.players[0].hand,state.lastPlay,state.currentLevel,state.rules)};
-      else if(o.url.endsWith('/actions')){actions.push(o.data.action);applyAction(state,'p1',o.data.action);data=o.data.action.type==='leave'?{room:null}:{room:getRoomView(state,'p1')};}
+      else if(o.url.endsWith('/actions')){
+        actions.push(o.data.action);
+        if(o.data.action.type==='leave'&&failures.leaveBefore){failures.leaveBefore=false;o.fail({});return;}
+        applyAction(state,'p1',o.data.action);
+        if(o.data.action.type==='leave'&&failures.leaveAfter){failures.leaveAfter=false;o.fail({});return;}
+        data={room:state.players.some(p=>p.userId==='p1')?getRoomView(state,'p1'):null};
+      }
       else data={room:getRoomView(state,'p1')};
       o.success({statusCode:200,data});
     },
@@ -48,7 +55,7 @@ function harness(loggedIn=false,screen={windowWidth:960,windowHeight:540,pixelRa
   const flush=async()=>{await new Promise(resolve=>setImmediate(resolve));};
   const click=(label:string)=>{const t=texts.find(t=>t.s===label);assert.ok(t,`missing button ${label}: ${texts.map(t=>t.s).join(',')}`);events.TouchStart({touches:[{clientX:t.x+3,clientY:t.y}]});events.TouchEnd();};
   const publish=()=>sockets.at(-1)?.message?.({data:JSON.stringify({type:'state',room:getRoomView(state,'p1')})});
-  return {events,texts:()=>texts,storage,state,actions,requests,sockets,errors,timers,flush,click,publish,modal:()=>modal};
+  return {events,texts:()=>texts,storage,state,actions,requests,sockets,errors,timers,flush,click,publish,modal:()=>modal,failures};
 }
 
 test('game artifact is current and project opens a real game entry',async()=>{
@@ -63,10 +70,62 @@ test('game boots without DOM, Page or App and guest can accept a shared invitati
   assert.equal(h.events.ShareAppMessage()?.query,'room=123456');h.events.Hide();assert.equal(h.timers.size,0);assert.equal(h.sockets[0].closed,true);
 });
 test('game leaves a waiting room through HTTP before returning to the lobby',async()=>{
-  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();h.publish();
-  h.click('大厅');assert.equal(h.modal()?.content,'离开将让出座位。');h.modal()?.success({confirm:true});await h.flush();
-  assert.equal(h.actions.at(-1)?.type,'leave');assert.equal(h.storage.has('gd6.http://127.0.0.1:3001.room'),false);
-  assert.ok(h.texts().some(t=>t.s==='电脑局 · 1–6 位真人'));h.events.Hide();
+  for(const online of [false,true]){
+    const h=harness(true);
+    try{
+      h.click('电脑局 · 1–6 位真人');await h.flush();if(online)h.publish();
+      h.click('大厅');assert.equal(h.modal()?.content,'离开将让出座位。');h.modal()?.success({confirm:true});await h.flush();
+      assert.equal(h.actions.at(-1)?.type,'leave');assert.equal(h.storage.has('gd6.http://127.0.0.1:3001.room'),false);
+      assert.ok(h.texts().some(t=>t.s==='电脑局 · 1–6 位真人'));
+    }finally{h.events.Hide();}
+  }
+});
+test('game lobby can fully exit a saved computer game but keeps active friends membership',async()=>{
+  for(const mode of ['computer','friends'] as const){
+    const h=harness(true);
+    try{
+      h.state.mode=mode;for(const p of h.state.players)applyAction(h.state,p.userId,{type:'ready',ready:true});
+      applyAction(h.state,'p1',{type:'start'});
+      h.storage.set('gd6.http://127.0.0.1:3001.room',h.state.roomId);h.events.Show({});
+      h.click('退出旧房');await h.flush();
+      if(mode==='computer'){
+        assert.equal(h.actions.at(-1)?.type,'leave');assert.equal(h.storage.has('gd6.http://127.0.0.1:3001.room'),false);
+        assert.equal(h.state.players.length,6);assert.equal(h.state.players[0].bot,true);
+      }else{
+        assert.equal(h.actions.length,0);assert.match(h.modal().content,/好友牌局/);
+        assert.equal(h.storage.get('gd6.http://127.0.0.1:3001.room'),h.state.roomId);
+      }
+    }finally{h.events.Hide();}
+  }
+});
+test('game retries HTTP failure or a lost exit response without silently abandoning a waiting room',async()=>{
+  for(const failure of ['leaveBefore','leaveAfter'] as const){
+    const h=harness(true);
+    try{
+      h.click('电脑局 · 1–6 位真人');await h.flush();h.failures[failure]=true;
+      h.click('大厅');h.modal().success({confirm:true});await h.flush();
+      assert.equal(h.storage.get('gd6.http://127.0.0.1:3001.room'),h.state.roomId);
+      assert.ok(h.texts().some(t=>t.s==='大厅'));
+      h.click('大厅');h.modal().success({confirm:true});await h.flush();
+      assert.equal(h.storage.has('gd6.http://127.0.0.1:3001.room'),false);
+      assert.ok(h.texts().some(t=>t.s==='电脑局 · 1–6 位真人'));
+    }finally{h.events.Hide();}
+  }
+});
+test('game active leave explains computer replacement and preserves only friends resume entries',async()=>{
+  for(const mode of ['computer','friends'] as const){
+    const h=harness(true);
+    try{
+      h.state.mode=mode;
+      h.click('电脑局 · 1–6 位真人');await h.flush();
+      for(const p of h.state.players)applyAction(h.state,p.userId,{type:'ready',ready:true});
+      applyAction(h.state,'p1',{type:'start'});h.publish();
+      h.click('大厅');assert.match(h.modal().content,mode==='computer'?/电脑接替/:/保留/);
+      h.modal().success({confirm:true});await h.flush();
+      assert.equal(h.storage.has('gd6.http://127.0.0.1:3001.room'),mode==='friends');
+      assert.ok(h.texts().some(t=>t.s==='电脑局 · 1–6 位真人'));
+    }finally{h.events.Hide();}
+  }
 });
 test('computer room can shuffle, seat friends together and fill only vacant seats on start',async()=>{
   const h=harness(true);

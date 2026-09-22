@@ -88,6 +88,54 @@ test('computer rooms allow one to six real players and fill only the empty seats
   }
 });
 
+test('computer takeover preserves all six seats and cards and the remaining players can finish', () => {
+  for (const humans of [2,6]) {
+    const state=createRoom('123456','p1','真人1',{rounds:1,turnSeconds:0},'computer');
+    for(let i=2;i<=humans;i++)addPlayer(state,`p${i}`,`真人${i}`);
+    ready(state);applyAction(state,'p1',{type:'start'});
+    state.currentTurnSeat=1;state.deadline=null;
+    const hand=structuredClone(state.players[0].hand);
+    const cards=state.players.flatMap(p=>p.hand.map(c=>c.id)).sort();
+    applyAction(state,'p1',{type:'leave'});
+    assert.equal(state.players.length,6);
+    assert.deepEqual(state.players.flatMap(p=>p.hand.map(c=>c.id)).sort(),cards);
+    const replacement=state.players.find(p=>p.seat===1)!;
+    assert.equal(replacement.bot,true);assert.equal(replacement.autoPlay,true);
+    assert.notEqual(replacement.userId,'p1');assert.deepEqual(replacement.hand,hand);
+    assert.equal(state.hostId,'p2');assert.notEqual(state.deadline,null);
+    assert.equal(tickGame(state,state.deadline!),true);
+    for(const p of state.players.filter(p=>!p.bot))applyAction(state,p.userId,{type:'auto',enabled:true});
+    let turns=0;
+    while(state.status==='playing'&&turns++<3000)assert.equal(tickGame(state,state.deadline!),true);
+    assert.equal(state.status,'finished');
+    assert.equal(new Set(state.finishOrder).size,6);
+  }
+});
+
+test('computer takeover preserves the last-play leader, finish ranks and next-round tribute seats', () => {
+  const leading=handFixture([['3','4'],['5'],['6'],['7'],['8'],['9']]);leading.mode='computer';
+  play(leading,1);
+  applyAction(leading,'p1',{type:'leave'});
+  for(let seat=2;seat<=6;seat++)applyAction(leading,`p${seat}`,{type:'pass'});
+  assert.equal(leading.currentTurnSeat,1);assert.equal(leading.lastPlay,null);
+  assert.equal(tickGame(leading,leading.deadline!),true);
+
+  const state=nearFinish([1,3,5,2,4,6]);state.mode='computer';state.rules.resistance=false;
+  play(state,4);assert.equal(state.status,'settlement');
+  const order=[...state.finishOrder];
+  applyAction(state,'p1',{type:'leave'});
+  assert.equal(state.players[0].finishRank,1);assert.deepEqual(state.finishOrder,order);
+  applyAction(state,'p2',{type:'next'});assert.equal(state.status,'tribute');
+  const donor=state.players.find(p=>p.seat===state.tribute[0].from)!;
+  const donorSeat=donor.seat;
+  applyAction(state,donor.userId,{type:'leave'});
+  assert.ok(state.players.find(p=>p.seat===donorSeat)?.bot);
+  for(const p of state.players.filter(p=>!p.bot))applyAction(state,p.userId,{type:'auto',enabled:true});
+  let turns=0;while(state.status==='tribute'&&turns++<10)assert.equal(tickGame(state,state.deadline!),true);
+  assert.equal(state.status,'playing');
+  assert.equal(new Set(state.players.flatMap(p=>p.hand.map(c=>c.id))).size,162);
+});
+
 test('only unready seats can swap; a prepared bystander does not prohibit other unready players swapping', () => {
   const state = room();
   applyAction(state,'p1',{ type: 'ready', ready: true });

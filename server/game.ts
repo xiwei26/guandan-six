@@ -259,16 +259,24 @@ function exchange(state: GameState, player: Player, cardId: string | undefined, 
 
 function applyMutable(state: GameState, userId: string, action: GameAction, now: number) {
   requireThat(action && typeof action === 'object' && typeof action.type === 'string', '操作格式错误');
-  // leave 操作可能在玩家已被移除时调用（例如重复点击），需要特殊处理
   if (action.type === 'leave') {
     const player = state.players.find(p => p.userId === userId);
-    if (!player) return; // 玩家已经不在房间中，静默成功
-    // 电脑局可以随时完全退出，因为其他都是机器人
-    // 等待中或已结束的房间也可以完全退出
-    if (state.mode === 'computer' || state.status === 'waiting' || state.status === 'finished') {
+    if (!player) return;
+    if (state.status === 'waiting' || state.status === 'finished') {
       state.players = state.players.filter(p => p.userId !== userId);
       if (state.hostId === userId) state.hostId = state.players.find(p => !p.bot)?.userId ?? state.players[0]?.userId ?? '';
       note(state, `${player.nickname} 离开了房间`);
+    } else if (state.mode === 'computer') {
+      // Keep every dealt card and seat reference (turn, leader, ranks and tribute).
+      const nickname = player.nickname;
+      player.userId = `bot-${state.roomId}-replacement-${player.seat}`;
+      player.nickname = '接替电脑';
+      player.bot = true;
+      player.autoPlay = true;
+      player.connected = true;
+      if (state.hostId === userId) state.hostId = state.players.find(p => !p.bot && p.connected)?.userId ?? state.players.find(p => !p.bot)?.userId ?? '';
+      if (state.status === 'tribute' || player.seat === state.currentTurnSeat) scheduleDeadline(state,now);
+      note(state, `${nickname} 已退出，由电脑接替原座位`);
     } else {
       // 好友局游戏中只能暂时离开，保留座位
       player.connected = false;

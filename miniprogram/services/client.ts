@@ -12,6 +12,7 @@ export function normalizeServer(value: string, development: boolean): string {
   return url;
 }
 export class MiniClient {
+  private roomGeneration=0;
   constructor(private platform: Platform) {}
   server(): string { return this.platform.getStorageSync('gd6.server') || API_BASE_URL; }
   private key(kind:string) { return `gd6.${this.server()}.${kind}`; }
@@ -22,7 +23,7 @@ export class MiniClient {
   }
   session(): Session|null { const s=this.platform.getStorageSync(this.key('session'));return s&&typeof s.token==='string'&&typeof s.userId==='string'?s:null; }
   roomId(): string { return this.platform.getStorageSync(this.key('room'))||''; }
-  remember(roomId:string) { if(roomId)this.platform.setStorageSync(this.key('room'),roomId);else this.platform.removeStorageSync(this.key('room')); }
+  remember(roomId:string) { this.roomGeneration++;if(roomId)this.platform.setStorageSync(this.key('room'),roomId);else this.platform.removeStorageSync(this.key('room')); }
   async request<T>(path:string,data?:unknown,anonymous=false):Promise<T> {
     const base=this.server();
     normalizeServer(base,this.platform.getAccountInfoSync().miniProgram.envVersion==='develop');
@@ -56,10 +57,18 @@ export class MiniClient {
     const result=await this.request<{room:RoomView}>(path,mode==='create'?{rules:value}:mode==='demo'?{waitForPlayers:true}:{});
     this.remember(result.room.roomId);return result.room;
   }
-  async room(id:string):Promise<RoomView> { const result=await this.request<{room:RoomView}>(`/api/rooms/${id}`);this.remember(id);return result.room; }
+  async room(id:string):Promise<RoomView> { const generation=this.roomGeneration;const result=await this.request<{room:RoomView}>(`/api/rooms/${id}`);if(generation===this.roomGeneration)this.remember(id);return result.room; }
+  async leave(id:string):Promise<RoomView|null> {
+    this.roomGeneration++; // Invalidate snapshots requested before the exit began.
+    let room:RoomView|null;
+    try{room=(await this.request<{room:RoomView|null}>(`/api/rooms/${id}/actions`,{action:{type:'leave'}})).room;}
+    catch(e){if(e instanceof ApiError&&[403,404].includes(e.status))room=null;else throw e;}
+    this.remember(room?.roomId||'');return room;
+  }
   async action(room:RoomView,action:GameAction):Promise<RoomView|null> {
+    if(action.type==='leave')return this.leave(room.roomId);
     const result=await this.request<{room:RoomView|null}>(`/api/rooms/${room.roomId}/actions`,{action,revision:room.revision});
-    if(action.type==='leave')this.remember(result.room?.roomId||'');return result.room;
+    return result.room;
   }
   async hints(id:string):Promise<Combination[]> { return (await this.request<{hints:Combination[]}>(`/api/rooms/${id}/hints`,{})).hints; }
   async history() {return this.request<{history:HistoryEntry[]}>('/api/history');}
