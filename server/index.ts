@@ -109,7 +109,7 @@ export function createApplication(options: Options = {}) {
     return room;
   }
   function vacant(userId:string) {
-    const existing=[...rooms.values()].find(r=>r.players.some(p=>p.userId===userId) && r.status!=='finished');
+    const existing=[...rooms.values()].find(r=>r.players.some(p=>p.userId===userId && p.connected) && r.status!=='finished');
     if (existing) throw new HttpError(409,`你已在房间 ${existing.roomId} 中，请先返回或退出该房间`);
   }
   function allocate(session:StoredSession,rules:Parameters<typeof createRoom>[3],mode:Parameters<typeof createRoom>[4] = 'friends') {

@@ -127,6 +127,30 @@ test('computer room accepts additional real players and fills the remaining seat
   } finally {await app.close();}
 });
 
+test('computer room allows players to leave completely during game',async()=>{
+  const app=await launch();
+  try {
+    const player=await app.login('电脑局玩家');
+    const created=await app.api('/api/demo',player.token,{waitForPlayers:false});
+    assert.equal(created.status,201);
+    const roomId=(created.data.room as RoomView).roomId;
+    const roomView = created.data.room as RoomView;
+    assert.equal(roomView.mode,'computer');
+    // waitForPlayers:false 时，电脑局直接开始游戏
+    assert.ok(['playing', 'tribute'].includes(roomView.status));
+    // 游戏中离开电脑局应该完全退出，而不是保留座位
+    const left=await app.api(`/api/rooms/${roomId}/actions`,player.token,{action:{type:'leave'}});
+    if (left.status !== 200) {
+      console.log('Leave failed:', JSON.stringify(left.data, null, 2));
+      console.log('Room status before leave:', roomView.status);
+    }
+    assert.equal(left.status,200, `Leave failed: ${JSON.stringify(left.data)}`);
+    // 离开后应该可以立即创建新房间
+    const newRoom=await app.api('/api/rooms',player.token,{rules:{rounds:1}});
+    assert.equal(newRoom.status,201);
+  } finally {await app.close();}
+});
+
 test('leaving a waiting room releases the identity for a new computer room',async()=>{
   const app=await launch();
   try {
@@ -176,6 +200,21 @@ test('wechat login exchanges a code for a stable identity through jscode2session
     assert.equal((await app.api('/api/rooms',first.token,{rules:{rounds:1}})).status,201);
     assert.equal((await app.api('/api/rooms',again.token,{rules:{rounds:1}})).status,409);
   } finally {await app.close();provider.close();}
+});
+
+test('disconnected players can create new rooms after leaving',async()=>{
+  const app=await launch({persist:false,tick:false});
+  try {
+    const player=await app.login('测试玩家');
+    const room1Response=await app.api('/api/rooms',player.token,{rules:{rounds:1}});
+    assert.equal(room1Response.status,201);
+    const room1=(room1Response.data as {room:RoomView}).room;
+    assert.equal((await app.api('/api/rooms',player.token,{rules:{rounds:1}})).status,409);
+    const leaveResponse=await app.api(`/api/rooms/${room1.roomId}/actions`,player.token,{action:{type:'leave'}});
+    assert.equal(leaveResponse.status,200);
+    const room2Response=await app.api('/api/rooms',player.token,{rules:{rounds:1}});
+    assert.equal(room2Response.status,201);
+  } finally {await app.close();}
 });
 
 test('development demo can be disabled and rule constraints stay server authoritative',async()=>{
