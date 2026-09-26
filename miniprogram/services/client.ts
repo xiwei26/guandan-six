@@ -2,6 +2,7 @@ import { API_BASE_URL } from '../config';
 import type { Combination, GameAction, HistoryEntry, RoomView, RuleConfig, Session, StatsSummary } from '../shared/types';
 
 type Platform = Pick<typeof wx,'request'|'login'|'getStorageSync'|'setStorageSync'|'removeStorageSync'|'getAccountInfoSync'>;
+export interface RoomAvatar {version:string;mime:'image/jpeg'|'image/png'|'image/webp';data:string}
 export class ApiError extends Error { constructor(public status: number, message: string, public roomId?:string) { super(message); } }
 export function normalizeServer(value: string, development: boolean): string {
   const url=value.trim().replace(/\/+$/,'');
@@ -95,6 +96,14 @@ export class MiniClient {
     if(action.type==='leave')return this.leave(room.roomId);
     const result=await this.request<{room:RoomView|null}>(`/api/rooms/${room.roomId}/actions`,{action,revision:room.revision});
     return result.room;
+  }
+  async updateProfile(nickname:string,avatar?:string):Promise<Session> {
+    const base=this.server(),session=await this.request<Session>('/api/profile',{nickname,...(avatar?{avatar}:{})});
+    if(this.server()!==base)throw new Error('服务地址已变更，请重试个人资料设置');
+    this.platform.setStorageSync(`gd6.${base}.session`,session);return session;
+  }
+  async roomAvatar(roomId:string,userId:string,version:string):Promise<RoomAvatar> {
+    return this.request<RoomAvatar>(`/api/rooms/${roomId}/avatars/${encodeURIComponent(userId)}?v=${encodeURIComponent(version)}`);
   }
   async hints(id:string):Promise<Combination[]> { return (await this.request<{hints:Combination[]}>(`/api/rooms/${id}/hints`,{})).hints; }
   async history() {return this.request<{history:HistoryEntry[]}>('/api/history');}

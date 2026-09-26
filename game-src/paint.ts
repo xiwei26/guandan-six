@@ -1,7 +1,7 @@
 /** Shared Canvas styling. All geometry uses the 960 × 540 logical viewport. */
 export const COLORS = {
   bg:'#0b302b', felt:'#164c40', panel:'#19473e', line:'#386154',
-  text:'#f7f1e2', muted:'#a6bfb0', gold:'#e7c789', blue:'#9ccce3', orange:'#edb78f',
+  text:'#f7f1e2', muted:'#a6bfb0', gold:'#e7c789', blue:'#55b7d1', orange:'#ee8958',
   paper:'#f8f3e7', ink:'#183c32', soft:'#eae6d9', paperMuted:'#677a6a', red:'#b74a40',
 };
 
@@ -36,6 +36,19 @@ export class Painter {
   ellipse(x:number,y:number,rx:number,ry:number,fill:string,stroke?:string) {
     const c=this.ctx;c.save();c.beginPath();c.ellipse(x,y,rx,ry,0,0,Math.PI*2);c.fillStyle=fill;c.fill();
     if(stroke){c.strokeStyle=stroke;c.lineWidth=1;c.stroke();}c.restore();
+  }
+
+  avatar(initial:string,cx:number,y:number,size:number,team:'A'|'B',image?:CanvasImageSource) {
+    const c=this.ctx,ring=team==='A'?COLORS.blue:COLORS.orange;
+    c.save();c.beginPath();c.arc(cx,y+size/2,size/2-2,0,Math.PI*2);c.closePath();c.clip();
+    c.fillStyle=team==='A'?'#155267':'#75422d';c.fillRect(cx-size/2,y,size,size);
+    if(image) {try{c.drawImage(image,cx-size/2,y,size,size);}catch{this.avatarInitial(initial,cx,y,size,ring);}}
+    else this.avatarInitial(initial,cx,y,size,ring);
+    c.restore();c.beginPath();c.arc(cx,y+size/2,size/2-1,0,Math.PI*2);c.strokeStyle=ring;c.lineWidth=3;c.stroke();
+  }
+
+  private avatarInitial(initial:string,cx:number,y:number,size:number,color:string) {
+    const c=this.ctx;c.save();c.fillStyle=color;c.textAlign='center';c.textBaseline='middle';c.font=`600 ${Math.round(size*.43)}px sans-serif`;c.fillText(initial||'牌',cx,y+size/2,size*.78);c.restore();
   }
 
   arrow(x:number,y:number,color:string=COLORS.ink) {

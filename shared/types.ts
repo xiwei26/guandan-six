@@ -12,7 +12,7 @@ export interface RuleConfig {
  straightFlushBeats: number; mustBeatAce: boolean;
 }
 export const DEFAULT_RULES: RuleConfig = {ruleVersion:'6P_V2',deckCount:3,playerCount:6,cardsPerPlayer:27,teamSize:3,rounds:'A',turnSeconds:30,showRemaining:true,allowAutoPlay:true,allowCounter:true,resistance:true,singleResistanceJokers:2,teamResistanceJokers:3,straightFlushBeats:5,mustBeatAce:true};
-export interface Player { userId: string; nickname: string; seat: number; team: Team; hand: Card[]; ready: boolean; autoPlay: boolean; connected: boolean; bot: boolean; finishRank?: number }
+export interface Player { userId: string; nickname: string; seat: number; team: Team; hand: Card[]; ready: boolean; autoPlay: boolean; connected: boolean; bot: boolean; finishRank?: number; avatarVersion?: string|null; avatarMime?: string|null }
 export interface PublicPlayer extends Omit<Player,'hand'> {remainingCards: number|null}
 export interface Tribute { from: number; to: number; given: boolean; returned: boolean; card?: Card; returnCard?: Card }
 export interface MatchStats { rounds: number; firsts: Record<string,number>; sweeps: Record<Team,number>; bombs: Record<number,number>; biggestBomb: number; totalPlays: number }
@@ -26,7 +26,7 @@ export interface GameState {
 }
 export interface RoomView extends Omit<GameState,'players'> {players: PublicPlayer[]; mySeat: number; hand: Card[]}
 export type GameAction = {type:'ready';ready:boolean}|{type:'start'}|{type:'swap';seat:number;target:number}|{type:'shuffleTeams'}|{type:'play';cardIds:string[]}|{type:'pass'}|{type:'auto';enabled:boolean}|{type:'tribute';cardId?:string}|{type:'next'}|{type:'leave'};
-export interface Session {token:string;userId:string;nickname:string;provider:'guest'|'wechat'}
+export interface Session {token:string;userId:string;nickname:string;provider:'guest'|'wechat';avatarVersion?:string|null;avatarMime?:string|null}
 export interface WechatLoginRequest {code:string;nickname?:string}
 export interface HistoryEntry { roomId:string;round:number;at:number;winner:Team;upgrade:number;biggestBomb:number;order:{nickname:string;userId:string;seat:number;team:Team}[] }
 export interface StatsSummary { rounds:number;wins:number;winRate:number;firsts:number;firstRate:number;sweeps:number;biggestBomb:number;rooms:number}

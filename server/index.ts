@@ -8,7 +8,7 @@ import { addPlayer, applyAction, createMatchStats, createRoom, getRoomView, setC
 import { findHints } from '../shared/cards.ts';
 import { DEFAULT_RULES, type GameAction, type GameState, type HistoryEntry, type Session, type StatsSummary } from '../shared/types.ts';
 
-interface StoredSession { userId: string; nickname: string; createdAt: number; provider?: Session['provider'] }
+interface StoredSession { userId: string; nickname: string; createdAt: number; provider?: Session['provider']; avatarVersion?: string|null; avatarMime?: string|null }
 interface StoredHistory extends HistoryEntry {userIds: string[]}
 interface SavedData { version: 1; rooms: GameState[]; sessions: [string,StoredSession][]; history: StoredHistory[] }
 interface Options { dataDir?: string; persist?: boolean; demo?: boolean; tick?: boolean; wechat?: {appId?:string;secret?:string;api?:string} }
@@ -22,6 +22,8 @@ export function createApplication(options: Options = {}) {
   const connections = new Map<WebSocket,{userId:string;roomId:string}>();
   let history: StoredHistory[] = [];
   const file = resolve(options.dataDir ?? 'data', 'state.json');
+  const avatarDir = resolve(dirname(file), 'avatars');
+  const avatarFile = (userId:string) => resolve(avatarDir, `${createHash('sha256').update(userId).digest('hex')}.img`);
   const persist = options.persist !== false;
   const wechat = { appId: options.wechat?.appId ?? process.env.WECHAT_APPID ?? '', secret: options.wechat?.secret ?? process.env.WECHAT_SECRET ?? '', api: options.wechat?.api ?? process.env.WECHAT_API ?? 'https://api.weixin.qq.com' };
   if (persist && existsSync(file)) {
@@ -81,10 +83,12 @@ export function createApplication(options: Options = {}) {
     if(!openid || typeof payload.errcode==='number' && payload.errcode!==0)
       throw new HttpError(401,`微信登录失败：${typeof payload.errmsg==='string'&&payload.errmsg?payload.errmsg:'登录凭证无效'}`);
     const userId=`wx-${createHash('sha256').update(`${wechat.appId}:${openid}`).digest('hex').slice(0,24)}`;
-    const name=nickname||`牌友${userId.slice(3,7)}`;
+    const previous=[...sessions.values()].find(session=>session.userId===userId);
+    const name=previous?.nickname??(nickname||`牌友${userId.slice(3,7)}`);
     const token=randomBytes(32).toString('hex');
-    sessions.set(hash(token),{userId,nickname:name,createdAt:Date.now(),provider:'wechat'});save();
-    return {token,userId,nickname:name,provider:'wechat'};
+    const session:StoredSession={userId,nickname:name,createdAt:Date.now(),provider:'wechat',avatarVersion:previous?.avatarVersion??null,avatarMime:previous?.avatarMime??null};
+    sessions.set(hash(token),session);save();
+    return {token,userId,nickname:name,provider:'wechat',avatarVersion:session.avatarVersion,avatarMime:session.avatarMime};
   }
   function broadcast(room: GameState) {
     record(room);
@@ -147,11 +151,11 @@ export function createApplication(options: Options = {}) {
     res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
     res.end(JSON.stringify(data));
   }
-  async function body(req:IncomingMessage):Promise<Record<string,unknown>> {
+  async function body(req:IncomingMessage,maxBytes=16384):Promise<Record<string,unknown>> {
     let data='';
     for await(const chunk of req) {
       data+=chunk.toString();
-      if (Buffer.byteLength(data)>16384) throw new HttpError(413,'请求内容过大');
+      if (Buffer.byteLength(data)>maxBytes) throw new HttpError(413,'请求内容过大');
     }
     if (!data) return {};
     try {const parsed=JSON.parse(data);if (!parsed || typeof parsed!=='object'||Array.isArray(parsed)) throw new Error();return parsed;}
@@ -181,9 +185,9 @@ export function createApplication(options: Options = {}) {
         const nickname=typeof data.nickname==='string'?data.nickname.trim():'';
         if (!nickname || nickname.length>20) throw new HttpError(400,'昵称需要 1–20 个字符');
         const token=randomBytes(32).toString('hex');
-        const session={userId:randomBytes(12).toString('hex'),nickname,createdAt:Date.now()};
+        const session:StoredSession={userId:randomBytes(12).toString('hex'),nickname,createdAt:Date.now(),provider:'guest',avatarVersion:null,avatarMime:null};
         sessions.set(hash(token),session);save();
-        const result:Session={token,userId:session.userId,nickname,provider:'guest'};
+        const result:Session={token,userId:session.userId,nickname,provider:'guest',avatarVersion:null,avatarMime:null};
         return json(res,201,result);
       }
       if (path==='/api/wechat/login' && req.method==='POST') {
@@ -195,7 +199,36 @@ export function createApplication(options: Options = {}) {
         if(nickname.length>20) throw new HttpError(400,'昵称需要 1–20 个字符');
         return json(res,200,await wechatLogin(code,nickname));
       }
-      const session=authenticate(req.headers.authorization?.replace(/^Bearer /,''));
+      const token=req.headers.authorization?.replace(/^Bearer /,'')??'';
+      const session=authenticate(token);
+      if (path==='/api/profile' && req.method==='POST') {
+        limit('profile:'+session.userId,12);
+        const data=await body(req,360_000);
+        const nickname=typeof data.nickname==='string'?data.nickname.trim():'';
+        if (!nickname || nickname.length>20) throw new HttpError(400,'昵称需要 1–20 个字符');
+        let avatarVersion=session.avatarVersion??null,avatarMime=session.avatarMime??null;
+        if (data.avatar!==undefined) {
+          if (typeof data.avatar!=='string'||!data.avatar||data.avatar.length>350_000||!/^[-A-Za-z0-9+/]+={0,2}$/.test(data.avatar)) throw new HttpError(400,'头像图片格式或大小无效');
+          const bytes=Buffer.from(data.avatar,'base64');
+          if (bytes.length>256*1024) throw new HttpError(413,'头像图片请控制在 256 KB 内');
+          const mime=bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff?'image/jpeg'
+            :bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))?'image/png'
+            :bytes.subarray(0,4).toString()==='RIFF'&&bytes.subarray(8,12).toString()==='WEBP'?'image/webp':null;
+          if (!mime) throw new HttpError(400,'请选择 JPEG、PNG 或 WebP 图片');
+          avatarVersion=createHash('sha256').update(bytes).digest('hex').slice(0,24);avatarMime=mime;
+          mkdirSync(avatarDir,{recursive:true});writeFileSync(avatarFile(session.userId)+'.tmp',bytes,{mode:0o600});renameSync(avatarFile(session.userId)+'.tmp',avatarFile(session.userId));
+        }
+        for (const userSession of sessions.values()) if (userSession.userId===session.userId) {
+          userSession.nickname=nickname;userSession.avatarVersion=avatarVersion;userSession.avatarMime=avatarMime;
+        }
+        const changed:GameState[]=[];
+        for (const room of rooms.values()) {
+          const player=room.players.find(p=>p.userId===session.userId);
+          if (player) {player.nickname=nickname;player.avatarVersion=avatarVersion;player.avatarMime=avatarMime;room.revision++;changed.push(room);}
+        }
+        changed.forEach(broadcast);save();
+        return json(res,200,{token,userId:session.userId,nickname,provider:session.provider??'guest',avatarVersion,avatarMime} satisfies Session);
+      }
       if (path==='/api/rooms/current' && req.method==='GET') return json(res,200,{roomId:occupiedRoom(session.userId)?.roomId??null});
       if (path==='/api/history' && req.method==='GET') {
         return json(res,200,{history:history.filter(h=>h.userIds.includes(session.userId)).slice(0,50).map(({userIds:_,...entry})=>entry)});
@@ -206,6 +239,7 @@ export function createApplication(options: Options = {}) {
         if (path==='/api/demo' && options.demo===false) throw new HttpError(403,'当前环境未开放体验桌');
         const computer=path==='/api/demo';
         const room=allocate(session,computer?{rounds:1,turnSeconds:30}:data.rules as Parameters<typeof createRoom>[3],computer?'computer':'friends');
+        const host=room.players.find(player=>player.userId===session.userId)!;host.avatarVersion=session.avatarVersion??null;host.avatarMime=session.avatarMime??null;
         if (path==='/api/demo') {
           applyAction(room,session.userId,{type:'ready',ready:true});
           if (data.waitForPlayers !== true) {
@@ -214,6 +248,14 @@ export function createApplication(options: Options = {}) {
           }
         }
         broadcast(room);return json(res,201,{room:getRoomView(room,session.userId)});
+      }
+      const avatarRoute=path.match(/^\/api\/rooms\/(\d{6})\/avatars\/([A-Za-z0-9_-]{1,100})$/);
+      if (avatarRoute && req.method==='GET') {
+        const [,roomId,userId]=avatarRoute,room=roomFor(roomId,session.userId),player=room.players.find(p=>p.userId===userId);
+        if (!player||player.bot||!player.avatarVersion||!player.avatarMime||url.searchParams.get('v')!==player.avatarVersion) throw new HttpError(404,'头像暂不可用');
+        const avatar=avatarFile(userId);if(!existsSync(avatar))throw new HttpError(404,'头像暂不可用');
+        limit('avatar:'+session.userId,120);
+        return json(res,200,{version:player.avatarVersion,mime:player.avatarMime,data:readFileSync(avatar).toString('base64')});
       }
       const route=path.match(/^\/api\/rooms\/(\d{6})(?:\/(join|actions|hints))?$/);
       if (!route) throw new HttpError(404,'接口不存在');
@@ -228,6 +270,7 @@ export function createApplication(options: Options = {}) {
       const room=roomFor(roomId,operation==='join'?undefined:session.userId);
       if (operation==='join') {
         if (!room.players.some(p=>p.userId===session.userId)) {vacant(session.userId);addPlayer(room,session.userId,session.nickname);}
+        const joined=room.players.find(p=>p.userId===session.userId)!;joined.nickname=session.nickname;joined.avatarVersion=session.avatarVersion??null;joined.avatarMime=session.avatarMime??null;
         broadcast(room);return json(res,200,{room:getRoomView(room,session.userId)});
       }
       if (operation==='actions') return json(res,200,act(room,session,data));
