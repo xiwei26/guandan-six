@@ -184,10 +184,11 @@ export class GuandanGame {
   private chooseProfileAvatar(){
     this.platform.chooseImage({count:1,sizeType:['compressed'],sourceType:['album','camera'],success:result=>{
       const path=result.tempFilePaths[0];if(!path)return;
-      const image=this.makeImage(path);if(image){image.onload=()=>{this.profilePreview=image;this.draw();};image.src=path;}
       this.platform.getFileSystemManager().readFile({filePath:path,encoding:'base64',success:result=>{
         if(result.data.length>350_000){this.platform.showToast({title:'图片太大，请选一张较小的头像',icon:'none'});return;}
         this.profileAvatar=result.data;
+        const image=this.makeImage(path);this.profilePreview=image;
+        if(image){image.onload=()=>this.draw();image.src=path;}
         this.draw();
       },fail:()=>this.error(new Error('无法读取所选图片，请重新选择'))});
     },fail:()=>this.platform.showToast({title:'未能选择图片',icon:'none'})});
@@ -202,7 +203,9 @@ export class GuandanGame {
       const cached=this.avatarImages.get(player.userId);if(cached?.version===version)continue;
       const entry:{version:string;image?:HTMLImageElement;loading:boolean}={version,loading:true};this.avatarImages.set(player.userId,entry);
       void this.api.roomAvatar(room.roomId,player.userId,version).then(payload=>{
-        if(this.room?.roomId!==room.roomId||this.avatarImages.get(player.userId)!==entry)return;
+        if(this.avatarImages.get(player.userId)!==entry)return;
+        const activePlayer=this.room?.players.find(item=>item.userId===player.userId);
+        if(activePlayer?.avatarVersion!==version){this.avatarImages.delete(player.userId);return;}
         const extension=payload.mime==='image/jpeg'?'jpg':payload.mime==='image/png'?'png':'webp';
         const path=`${this.platform.env.USER_DATA_PATH}/gd6-avatar-${player.userId.replace(/[^A-Za-z0-9_-]/g,'_')}-${version}.${extension}`;
         this.platform.getFileSystemManager().writeFile({filePath:path,data:payload.data,encoding:'base64',success:()=>{
@@ -210,7 +213,7 @@ export class GuandanGame {
           const image=this.makeImage(path);entry.loading=false;entry.image=image;
           if(image){image.onload=()=>{if(this.room?.roomId===room.roomId)this.draw();};image.src=path;}
           this.draw();
-        },fail:()=>{entry.loading=false;this.avatarImages.delete(player.userId);this.draw();}});
+        },fail:()=>{if(this.avatarImages.get(player.userId)!==entry)return;entry.loading=false;this.avatarImages.delete(player.userId);this.draw();}});
       }).catch(()=>{if(this.avatarImages.get(player.userId)===entry)this.avatarImages.delete(player.userId);});
     }
   }
@@ -353,21 +356,24 @@ export class GuandanGame {
     else this.paint.text(vm.selectionText,24,510,14,this.selected.length?C.gold:C.muted,400,'sans-serif',520);
     if(this.groups){
       const cardsById=new Map(room.hand.map(card=>[card.id,card])),blocks:{ids:string[];group:number;single:boolean}[]=[];
+      const singles:{ids:string[];group:number}={ids:[],group:0};
       this.groups.forEach((group,index)=>{
         const ids=group.ids.filter(id=>cardsById.has(id));
-        if(ids.length===1&&blocks[blocks.length-1]?.single)blocks[blocks.length-1].ids.push(ids[0]);
-        else if(ids.length)blocks.push({ids:[...ids],group:index,single:ids.length===1});
+        if(ids.length===1){if(!singles.ids.length)singles.group=index;singles.ids.push(ids[0]);}
+        else if(ids.length)blocks.push({ids:[...ids],group:index,single:false});
       });
-      let x=27,y=386,rowHeight=68;
+      if(singles.ids.length)blocks.push({...singles,single:true});
+      let x=27;const y=386;
       for(const block of blocks){
-        const cardW=60,cardH=68,horizontalStep=block.single?24:6,verticalStep=block.single?0:5,width=cardW+Math.max(0,block.ids.length-1)*horizontalStep;
-        if(x+width>936&&x>27){x=27;y+=rowHeight+7;rowHeight=68;}
+        const cardW=54,cardH=58,verticalStep=22,cardsPerColumn=5,columnStep=58;
+        const width=block.single?cardW+Math.max(0,block.ids.length-1)*24:cardW+Math.max(0,Math.ceil(block.ids.length/cardsPerColumn)-1)*columnStep;
         block.ids.forEach((id,index)=>{
-          const card=cardsById.get(id)!,view=cardView(card,room.currentLevel,this.selected),cardX=x+index*horizontalStep,cardY=y+index*verticalStep-(view.selected?10:0);
+          const card=cardsById.get(id)!,view=cardView(card,room.currentLevel,this.selected);
+          const cardX=x+(block.single?index*24:Math.floor(index/cardsPerColumn)*columnStep),cardY=y+(block.single?0:index%cardsPerColumn*verticalStep)-(view.selected?10:0);
           this.card(view,cardX,cardY,cardW,cardH);this.hits.push({x:cardX,y:cardY,w:cardW,h:cardH,card:id,run:()=>{}});
           if(!block.single){this.box(cardX+1,cardY+cardH-4,cardW-2,3,block.group%2?C.blue:C.gold);if(index===0)this.text(String(block.group+1),cardX+4,cardY+cardH-12,9,C.bg);}
         });
-        rowHeight=Math.max(rowHeight,cardH+Math.max(0,block.ids.length-1)*verticalStep);x+=width+(block.single?0:9);
+        x+=width+(block.single?0:9);
       }
     }else{
       const cards=vm.rows.flatMap(row=>row.cards),layout=handLayout(cards.length);

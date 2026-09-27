@@ -3,18 +3,18 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {build} from 'esbuild';
-import {viewport,hitAt,handLayout,lobbySpread,WAITING_SEATS} from '../game-src/layout';
+import {viewport,hitAt,handLayout,lobbySpread} from '../game-src/layout';
 import {createRoom,addPlayer,applyAction,getRoomView} from '../server/game';
-import {findHints} from '../shared/cards';
+import {createDeck,findHints} from '../shared/cards';
 import {handRows,validReturnCards} from '../miniprogram/utils/presentation';
-import type {GameAction} from '../shared/types';
+import type {GameAction,Session} from '../shared/types';
 
 function harness(loggedIn=false,screen={windowWidth:960,windowHeight:540,pixelRatio:1} as {windowWidth:number;windowHeight:number;pixelRatio:number;safeArea?:{left:number;top:number;right:number;bottom:number}}){
   const events:Record<string,(value?:any)=>any>={};
   let texts:{s:string;x:number;y:number}[]=[];
   const storage=new Map<string,unknown>();
   storage.set('gd6.server','http://127.0.0.1:3001');
-  const session={token:'test',userId:'p1',nickname:'测试玩家',provider:'guest'};
+  const session:Session={token:'test',userId:'p1',nickname:'测试玩家',provider:'guest',avatarVersion:null,avatarMime:null};
   if(loggedIn)storage.set('gd6.http://127.0.0.1:3001.session',session);
   const state=createRoom('123456','p1','测试玩家');for(let i=2;i<=6;i++)addPlayer(state,`p${i}`,`玩家${i}`);
   const requests:{url:string;data:any}[]=[];
@@ -25,18 +25,30 @@ function harness(loggedIn=false,screen={windowWidth:960,windowHeight:540,pixelRa
   const failures={leaveBefore:false,leaveAfter:false};
   const recovery={roomId:null as string|null,legacyConflict:false};
   const timers=new Set<unknown>();
-  const ctx={font:'18px sans-serif',setTransform(){},save(){},restore(){},beginPath(){},closePath(){},moveTo(){},lineTo(){},quadraticCurveTo(){},bezierCurveTo(){},fill(){},stroke(){},ellipse(){},arc(){},translate(){},rotate(){},scale(){},
+  const avatar={defer:false,pending:[] as any[],requests:0,writes:0,choices:[] as {path:string;data:string}[],lastChoice:undefined as {path:string;data:string}|undefined};
+  const toasts:string[]=[];
+  let drawnImages:string[]=[];
+  const ctx={font:'18px sans-serif',setTransform(){},save(){},restore(){},beginPath(){},closePath(){},clip(){},moveTo(){},lineTo(){},quadraticCurveTo(){},bezierCurveTo(){},fill(){},stroke(){},ellipse(){},arc(){},translate(){},rotate(){},scale(){},
     createLinearGradient(){return {addColorStop(){}};},
-    fillRect(x:number,y:number,w:number){if(x===0&&y===0&&w===960)texts=[];},fillText(s:string,x:number,y:number){texts.push({s,x,y});},
+    fillRect(x:number,y:number,w:number){if(x===0&&y===0&&w===960){texts=[];drawnImages=[];}},fillText(s:string,x:number,y:number){texts.push({s,x,y});},
+    drawImage(image:{src?:string}){drawnImages.push(image.src??'');},
     measureText(s:string){const size=Number(this.font.match(/([\d.]+)px/)?.[1]??18);return {width:[...s].reduce((width,c)=>width+size*(c.charCodeAt(0)>255?1:.55),0)};}};
   const canvas={width:960,height:540,getContext:()=>ctx};
-  const wx:any={createCanvas:()=>canvas,getSystemInfoSync:()=>screen,
+  const wx:any={createCanvas:()=>canvas,env:{USER_DATA_PATH:'test'},getSystemInfoSync:()=>screen,
     getStorageSync:(k:string)=>storage.get(k),setStorageSync:(k:string,v:unknown)=>storage.set(k,v),removeStorageSync:(k:string)=>storage.delete(k),
     getAccountInfoSync:()=>({miniProgram:{envVersion:'develop'}}),getLaunchOptionsSync:()=>({query:{room:'123456'}}),showShareMenu(){},
-    shareAppMessage(o:any){events.shared?.(o);},showModal(o:any){modal=o;errors.push(o.content);},showToast(){},hideKeyboard(){},showKeyboard(){},
+    shareAppMessage(o:any){events.shared?.(o);},showModal(o:any){modal=o;errors.push(o.content);},showToast(o:any){toasts.push(o.title);},hideKeyboard(){},showKeyboard(){},
+    chooseImage(o:any){const choice=avatar.choices.shift();if(choice)o.success({tempFilePaths:[choice.path]});else o.fail();},
+    createImage(){const image:any={onload:undefined,_src:''};Object.defineProperty(image,'src',{get(){return image._src;},set(value){image._src=value;image.onload?.();}});return image;},
+    getFileSystemManager(){return {
+      readFile(o:any){const choice=avatar.lastChoice;if(choice&&choice.path===o.filePath)o.success({data:choice.data});else o.fail();},
+      writeFile(o:any){avatar.writes++;o.success();}
+    };},
     request(o:any){requests.push(o);let data:unknown;
       if(o.url.endsWith('/api/session'))data=session;
+      else if(o.url.endsWith('/api/profile')){session.nickname=o.data.nickname;if(o.data.avatar){session.avatarVersion='v2';session.avatarMime='image/png';}data=session;}
       else if(o.url.endsWith('/api/rooms/current'))data={roomId:recovery.roomId};
+      else if(o.url.includes('/avatars/')){avatar.requests++;if(avatar.defer){avatar.pending.push(o);return;}data={version:'v1',mime:'image/png',data:'AA=='};}
       else if(recovery.legacyConflict&&(o.url.endsWith('/api/demo')||o.url.endsWith('/api/rooms'))){o.success({statusCode:409,data:{error:`你已在房间 ${state.roomId} 中，请先返回或退出该房间`}});return;}
       else if(o.url.endsWith('/hints'))data={hints:findHints(state.players[0].hand,state.lastPlay,state.currentLevel,state.rules)};
       else if(o.url.endsWith('/actions')){
@@ -53,12 +65,13 @@ function harness(loggedIn=false,screen={windowWidth:960,windowHeight:540,pixelRa
       onOpen(){},onClose(){},onError(){},onMessage(fn:(e:{data:string})=>void){socket.message=fn;},send(){},close(){socket.closed=true;}
     };}
   };
+  const nativeChooseImage=wx.chooseImage.bind(wx);wx.chooseImage=(o:any)=>{avatar.lastChoice=avatar.choices[0];nativeChooseImage(o);};
   for(const name of ['TouchStart','TouchMove','TouchEnd','TouchCancel','KeyboardConfirm','KeyboardComplete','Show','Hide','WindowResize','NetworkStatusChange','ShareAppMessage'])wx['on'+name]=(fn:()=>void)=>events[name]=fn;
   runInNewContext(readFileSync('minigame/game.js','utf8'),{wx,console,setInterval:(fn:unknown)=>{timers.add(fn);return fn;},clearInterval:(fn:unknown)=>timers.delete(fn),setTimeout,clearTimeout});
   const flush=async()=>{await new Promise(resolve=>setImmediate(resolve));};
   const click=(label:string)=>{const t=texts.find(t=>t.s===label);assert.ok(t,`missing button ${label}: ${texts.map(t=>t.s).join(',')}`);events.TouchStart({touches:[{clientX:t.x+3,clientY:t.y}]});events.TouchEnd();};
   const publish=()=>sockets.at(-1)?.message?.({data:JSON.stringify({type:'state',room:getRoomView(state,'p1')})});
-  return {events,texts:()=>texts,storage,state,actions,requests,sockets,errors,timers,flush,click,publish,modal:()=>modal,failures,recovery};
+  return {events,texts:()=>texts,drawnImages:()=>drawnImages,storage,state,actions,requests,sockets,errors,toasts,timers,avatar,flush,click,publish,modal:()=>modal,failures,recovery};
 }
 
 test('game artifact is current and project opens a real game entry',async()=>{
@@ -162,8 +175,9 @@ test('computer room can shuffle, seat friends together and fill only vacant seat
     const friend=h.state.players.find(p=>p.userId==='p2')!;
     const target=[1,2,3,4,5,6].find(seat=>seat%2===host.seat%2&&!h.state.players.some(p=>p.seat===seat))!;
     const tapSeat=(seat:number)=>{
-      const {x,y}=WAITING_SEATS[(seat-host.seat+6)%6];
-      h.events.TouchStart({touches:[{clientX:x+10,clientY:y+10}]});h.events.TouchEnd();
+      const positions=[[68,282],[870,190],[870,100],[480,50],[68,100],[68,190]];
+      const [x,y]=positions[(seat-host.seat+6)%6];
+      h.events.TouchStart({touches:[{clientX:x,clientY:y+20}]});h.events.TouchEnd();
     };
     h.click('调整座位');tapSeat(friend.seat);tapSeat(target);await h.flush();
     assert.equal(h.actions.at(-1)?.type,'swap');
@@ -188,17 +202,51 @@ test('game selects cards, submits server hints and recovers foreground snapshot'
   const layout=handLayout(27);
   h.events.TouchStart({touches:[{clientX:layout.left+5,clientY:410}]});h.events.TouchMove({touches:[{clientX:layout.left+layout.step+5,clientY:410}]});h.events.TouchEnd();
   assert.ok(h.texts().some(t=>t.s.includes('已选 2 张')||t.s.includes('所选牌型无效')));
-  h.click('清空');h.click('提示');await h.flush();h.click('出牌');await h.flush();
+  h.click('提示');await h.flush();h.click('出牌');await h.flush();
   assert.equal(h.actions.at(-1)?.type,'play');assert.ok(h.state.players[0].hand.length<27);
   h.events.Hide();h.events.Show({});await h.flush();h.publish();assert.equal(h.sockets.length,2);assert.equal(h.timers.size,1);
   h.events.Hide();assert.equal(h.errors.length,0);
 });
-test('game auto arrangement opens editable groups without submitting a server action',async()=>{
+test('game auto arrangement and restore stay local without submitting a server action',async()=>{
   const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
   for(const p of h.state.players)applyAction(h.state,p.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});h.publish();
-  h.click('一键理牌');assert.ok(h.texts().some(t=>t.s.startsWith('手牌分组')));
-  const label=h.texts().find(t=>/^1\. /.test(t.s))!.s;h.click(label);h.click('选牌成组');h.click('完成');h.click('调整');
-  assert.ok(h.texts().some(t=>t.s.startsWith('手牌分组')));assert.equal(h.actions.length,0);h.events.Hide();
+  h.click('一键理牌');assert.ok(h.texts().some(t=>t.s==='组合'));assert.ok(h.texts().some(t=>t.s==='还原'));
+  h.click('还原');assert.equal(h.actions.length,0);h.events.Hide();
+});
+
+test('arranged combinations leave every compact card header visible and on canvas',async()=>{
+  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
+  for(const p of h.state.players)applyAction(h.state,p.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});
+  h.state.players[0].hand=createDeck().filter(card=>card.rank==='3');h.publish();
+  h.click('一键理牌');
+  const ranks=h.texts().filter(text=>text.s==='3'&&text.y>376).sort((a,b)=>a.y-b.y);
+  const rows=[...new Set(ranks.map(rank=>rank.y))].sort((a,b)=>a-b);
+  assert.equal(ranks.length,12);assert.ok(rows.length>1);assert.ok(rows.slice(1).every((row,index)=>row-rows[index]>=20),'stacked cards must expose each compact header');
+  assert.ok(Math.max(...ranks.map(rank=>rank.y))<=500,'large combinations must stay inside the hand area');
+  h.events.Hide();
+});
+
+test('avatar loading retries after a stale response completes outside the room',async()=>{
+  const h=harness(true);h.avatar.defer=true;h.state.players[1].avatarVersion='v1';h.state.players[1].avatarMime='image/png';
+  h.click('电脑局 · 1–6 位真人');await h.flush();assert.equal(h.avatar.requests,1);
+  h.sockets.at(-1)?.message?.({data:JSON.stringify({type:'left'})});await h.flush();
+  h.avatar.pending.shift().success({statusCode:200,data:{version:'v1',mime:'image/png',data:'AA=='}});await h.flush();
+  h.click('电脑局 · 1–6 位真人');await h.flush();
+  h.avatar.pending.shift()?.success({statusCode:200,data:{version:'v1',mime:'image/png',data:'AA=='}});await h.flush();
+  assert.equal(h.avatar.writes,1);assert.match(h.drawnImages().at(-1)??'',/gd6-avatar-p2-v1\.png$/);
+  h.events.Hide();
+});
+
+test('oversized avatar selection keeps the last valid preview and upload',async()=>{
+  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
+  h.events.TouchStart({touches:[{clientX:68,clientY:306}]});h.events.TouchEnd();
+  const valid='aGVsbG8=';h.avatar.choices.push({path:'valid.png',data:valid});h.click('选择头像');
+  assert.equal(h.drawnImages().at(-1),'valid.png');
+  h.avatar.choices.push({path:'oversized.png',data:'A'.repeat(350_001)});h.click('选择头像');
+  assert.equal(h.drawnImages().at(-1),'valid.png');assert.equal(h.toasts.at(-1),'图片太大，请选一张较小的头像');
+  h.click('保存资料');await h.flush();
+  assert.equal(h.requests.find(request=>request.url.endsWith('/api/profile'))?.data.avatar,valid);
+  h.events.Hide();
 });
 
 test('game maps safe-area touch coordinates and chooses the topmost card',()=>{

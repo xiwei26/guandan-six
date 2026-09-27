@@ -105,11 +105,18 @@ export class Painter {
   }
 
   card(c:{label:string;symbol:string;red:boolean;wild:boolean;selected?:boolean},x:number,y:number,w:number,h:number) {
-    const ink=c.red?COLORS.red:COLORS.ink,large=h>80,ctx=this.ctx;
+    const ink=c.red?COLORS.red:COLORS.ink,large=h>80,compact=w>=48&&w<=64&&h<=64,ctx=this.ctx;
     ctx.save();ctx.shadowColor='#001e2440';ctx.shadowBlur=4;ctx.shadowOffsetY=2;
     this.rect(x,y,w,h,c.selected?'#ffedbf':'#fffcf4',6,c.selected?COLORS.gold:'#c5c9bb');ctx.restore();
     if(c.selected)this.rect(x+2,y+2,w-4,h-4,'transparent',4,'#c49a4f');
-    if(c.label==='大'||c.label==='小') {
+    if(compact) {
+      if(c.label==='大'||c.label==='小')this.text(c.label+'王',x+4,y+12,13,ink,600,'sans-serif',w-8);
+      else {
+        this.text(c.label,x+4,y+12,c.label==='10'?14:17,ink,600,'Georgia, serif');
+        this.suit(c.symbol,x+(c.label==='10'?28:21),y+5,14,ink);
+      }
+      if(c.wild){this.rect(x+w-16,y+3,13,16,'#ead19b',3);this.text('配',x+w-14,y+11,9,'#725320',600);}
+    } else if(c.label==='大'||c.label==='小') {
       const step=Math.min(16,(h-12)/5);
       [...'JOKER'].forEach((letter,i)=>this.text(letter,x+5,y+11+i*step,Math.min(19,step+2),ink,600,'Georgia, serif'));
       if(large)this.suit('✦',x+w-45,y+h-50,34,ink);
@@ -118,7 +125,7 @@ export class Painter {
       this.suit(c.symbol,x+5,y+(large?33:26),large?20:15,ink);
       if(large)this.suit(c.symbol,x+w-44,y+h-51,34,ink);
     }
-    if(c.wild){this.rect(x+3,y+h-29,20,18,'#ead19b',4);this.text('配',x+7,y+h-20,11,'#725320',600);}
+    if(c.wild&&!compact){this.rect(x+3,y+h-29,20,18,'#ead19b',4);this.text('配',x+7,y+h-20,11,'#725320',600);}
   }
 
   lobbyArt() {
