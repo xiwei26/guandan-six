@@ -226,6 +226,44 @@ test('arranged combinations leave every compact card header visible and on canva
   h.events.Hide();
 });
 
+test('other players played combinations expose every card header',async()=>{
+  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
+  for(const player of h.state.players)applyAction(h.state,player.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});
+  const cards=[...createDeck().filter(card=>card.rank==='6'&&card.suit==='spade').slice(0,3),...createDeck().filter(card=>card.rank==='7'&&card.suit==='club').slice(0,2)];
+  h.state.players[1].hand=cards;h.state.currentTurnSeat=h.state.players[1].seat;
+  applyAction(h.state,'p2',{type:'play',cardIds:cards.map(card=>card.id)});h.publish();
+  const headers=h.texts().filter(text=>(text.s==='6'||text.s==='7')&&text.y>200&&text.y<310).sort((a,b)=>a.x-b.x);
+  assert.equal(headers.length,5);assert.ok(headers.slice(1).every((header,index)=>header.x-headers[index].x>=44),'played cards must leave every card face readable');
+  h.events.Hide();
+});
+
+test('top player combinations render below the identity and action bar',async()=>{
+  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
+  for(const player of h.state.players)applyAction(h.state,player.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});
+  const cards=[...createDeck().filter(card=>card.rank==='6'&&card.suit==='spade').slice(0,3),...createDeck().filter(card=>card.rank==='7'&&card.suit==='club').slice(0,2)];
+  h.state.players[3].hand=cards;h.state.currentTurnSeat=h.state.players[3].seat;
+  applyAction(h.state,'p4',{type:'play',cardIds:cards.map(card=>card.id)});h.publish();
+  const headers=h.texts().filter(text=>(text.s==='6'||text.s==='7')&&text.y>190&&text.y<310);
+  assert.equal(headers.length,5);assert.ok(headers.every(header=>header.y>=220),'top player cards must clear the identity and default action bar');
+  h.events.Hide();
+});
+
+test('long opponent bombs wrap into two readable rows',async()=>{
+  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
+  for(const player of h.state.players)applyAction(h.state,player.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});
+  const cards=createDeck().filter(card=>card.rank==='6');
+  h.state.players[1].hand=cards;h.state.currentTurnSeat=h.state.players[1].seat;
+  applyAction(h.state,'p2',{type:'play',cardIds:cards.map(card=>card.id)});h.publish();
+  const headers=h.texts().filter(text=>text.s==='6'&&text.y>190&&text.y<310);
+  const rows=[...new Set(headers.map(header=>header.y))].sort((a,b)=>a-b);
+  assert.equal(headers.length,12);assert.deepEqual(rows.map(y=>headers.filter(header=>header.y===y).length),[6,6]);
+  for(const y of rows){
+    const row=headers.filter(header=>header.y===y).sort((a,b)=>a.x-b.x);
+    assert.ok(row.slice(1).every((header,index)=>header.x-row[index].x>=44),'wrapped cards must keep every face readable');
+  }
+  h.events.Hide();
+});
+
 test('avatar loading retries after a stale response completes outside the room',async()=>{
   const h=harness(true);h.avatar.defer=true;h.state.players[1].avatarVersion='v1';h.state.players[1].avatarMime='image/png';
   h.click('电脑局 · 1–6 位真人');await h.flush();assert.equal(h.avatar.requests,1);

@@ -322,11 +322,20 @@ export class GuandanGame {
       this.button('开始',678,480,254,()=>this.act({type:'start'}),online&&vm.host&&vm.allReady,true,48,19);return;
     }
     if(room.lastPlay&&room.lastPlaySeat!==null&&vm.played.length){
-      const relative=(room.lastPlaySeat-room.mySeat+6)%6,myPlay=relative===0,total=myPlay?42+(vm.played.length-1)*24:22+(vm.played.length-1)*15;
-      const anchor=relative===3?{x:503,y:99}:relative===1?{x:610,y:247}:relative===2?{x:610,y:193}:relative===4?{x:150,y:193}:{x:150,y:247};
-      const cardWidth=myPlay?42:22,cardHeight=myPlay?63:38,gap=myPlay?24:15,start=myPlay?480-total/2:anchor.x;
-      this.centeredText(vm.lastLabel.slice(0,24),myPlay?480:start+Math.min(total/2,105),myPlay?198:anchor.y-9,12,C.muted,210);
-      vm.played.forEach((card,index)=>this.card(card,start+index*gap,anchor.y,cardWidth,cardHeight));
+      const relative=(room.lastPlaySeat-room.mySeat+6)%6,myPlay=relative===0,topPlay=relative===3;
+      if(myPlay){
+        const cardWidth=42,cardHeight=63,gap=24,total=cardWidth+(vm.played.length-1)*gap,start=480-total/2;
+        this.centeredText(vm.lastLabel.slice(0,24),480,198,12,C.muted,210);
+        vm.played.forEach((card,index)=>this.card(card,start+index*gap,247,cardWidth,cardHeight));
+      }else{
+        const cardWidth=48,cardHeight=64,gap=46,rowCount=vm.played.length>6?2:1,rowCapacity=Math.ceil(vm.played.length/rowCount);
+        const centerX=topPlay?480:relative===1||relative===2?648:292,firstY=rowCount===2?214:223;
+        this.centeredText(vm.lastLabel.slice(0,24),centerX,firstY-11,12,C.muted,220);
+        for(let row=0;row<rowCount;row++){
+          const cards=vm.played.slice(row*rowCapacity,(row+1)*rowCapacity),rowWidth=cardWidth+(cards.length-1)*gap,start=centerX-rowWidth/2;
+          cards.forEach((card,index)=>this.card(card,start+index*gap,firstY+row*22,cardWidth,cardHeight));
+        }
+      }
     }else if(!vm.tribute)this.centeredText('等待首出',480,224,22,C.muted,240);
     if(vm.tribute)this.centeredText('贡还贡 · 按提示选择牌',480,220,19,C.gold,300);
     const seconds=room.deadline===null?'不限时':Math.max(0,Math.ceil((room.deadline-Date.now())/1000))+' 秒';
