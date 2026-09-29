@@ -35,10 +35,10 @@ export type GamePlatform=Pick<typeof wx,'request'|'login'|'getStorageSync'|'setS
 
 const RULES=[
   '六人同桌，A / B 隔位组队；三副牌，每人 27 张。六人准备后由房主开始。',
-  '大王 > 小王 > 级牌 > A 至 2。红桃级牌为逢人配，可以替普通牌，不能替王。',
+  '首局打 2；大王 > 小王 > 当前级牌 > A 至 2。红桃级牌为逢人配，可以替普通牌，不能替王。',
   '支持单张、对子、三张、三带二、顺子、三连对、钢板、同花顺、4–12 张炸弹。',
   '天王炸 > 12–7 炸 > 三大王 > 三小王 > 6 炸 > 同花顺 > 5 炸 > 4 炸。王炸不许配牌。',
-  '头游队获胜。末尾连续 3 / 2 / 1 名对手，升 4 / 3 / 2 级；末游同队只升 1 级。',
+  '头游队获胜。末尾连续 3 / 2 / 1 名对手，升 4 / 3 / 2 级；末游同队只升 1 级。例如打 2 升 4 级，下局打 6；升 2 级，下局打 4。',
   '出完者最后一手无人压，由顺时针最近的未出完队友接风，无队友则由下一人首出。',
   '按升级数进贡，最多三贡；进最大非逢人配牌；还 2–9 非级牌，没有时还最小非逢人配。',
   '单贡者有 2 张大王可抗贡；双/三贡败队合计 3 张大王可抗贡。抗贡由上局头游首出。',
@@ -143,7 +143,7 @@ export class GuandanGame {
   private async syncLobbyRoom(){if(this.room||!this.api.session()||this.busy||this.leaving)return;try{await this.api.recoverRoom();}catch{/* Keep cached controls usable when the server cannot be reached. */}finally{this.draw();}}
   private async login(kind:'guest'|'wechat'){await this.task(async()=>{await this.api.login(kind,this.nickname);});await this.syncLobbyRoom();}
   private enter(mode:'create'|'join'|'demo',id?:string){if(mode==='join'&&!/^\d{6}$/.test(id||'')){this.error(new Error('请输入六位房间号'));return;}
-    void this.task(async()=>{const epoch=this.epoch;const room=await this.api.enter(mode,mode==='create'?this.options:mode==='demo'?{waitForPlayers:true}:id);if(!this.visible||epoch!==this.epoch)return;this.accept(room);this.connect();});}
+    void this.task(async()=>{const epoch=this.epoch;const room=await this.api.enter(mode,mode==='create'||mode==='demo'?this.options:id);if(!this.visible||epoch!==this.epoch)return;this.accept(room);this.connect();});}
   private accept(room:RoomView){if(this.room?.roomId===room.roomId&&room.revision<this.room.revision)return;
     if(this.room?.round!==room.round||this.room?.totalPlays!==room.totalPlays)this.hintIndex=0;
     if(this.room?.round!==room.round||this.room?.roomId!==room.roomId){this.selected=[];this.groups=null;}
@@ -391,7 +391,7 @@ export class GuandanGame {
     if(vm.ended){
       this.hits=[];this.paint.scrim();this.paint.paperPanel(215,102,530,364);this.paper=true;this.text((room.settlement?.winner??'')+' 队获胜 · 升 '+room.settlement?.upgrade+' 级',245,139,28,C.ink);
       vm.ranking.forEach((entry,index)=>this.text(entry.place+'   '+entry.name.slice(0,12)+'   '+entry.team+' 队',250,184+index*32,18));
-      this.button(room.status==='finished'?'整场结束':'下一局',245,408,220,()=>this.act({type:'next'}),online&&vm.host&&room.status==='settlement',true);
+      this.button(room.status==='finished'?'整场结束':`下一局 · 打 ${room.settlement?.toLevel??room.currentLevel}`,245,408,220,()=>this.act({type:'next'}),online&&vm.host&&room.status==='settlement',true);
       this.button('返回大厅',487,408,220,()=>this.leave());
     }
   }

@@ -85,6 +85,19 @@ test('game boots without DOM, Page or App and guest can accept a shared invitati
   assert.ok(h.texts().some(t=>t.s==='等待六位牌友准备'));h.click('准备');await h.flush();assert.deepEqual(JSON.parse(JSON.stringify(h.actions)),[{type:'ready',ready:true}]);
   assert.equal(h.events.ShareAppMessage()?.query,'room=123456');h.events.Hide();assert.equal(h.timers.size,0);assert.equal(h.sockets[0].closed,true);
 });
+test('game sends the selected match length when creating a computer room',async()=>{
+  for(const [change,expected] of [[false,'A'],[true,1]] as const){
+    const h=harness(true);
+    try{
+      if(change)h.click('局数：打到 A');
+      h.click('电脑局 · 1–6 位真人');await h.flush();
+      const request=h.requests.find(item=>item.url.endsWith('/api/demo'));
+      assert.ok(request);
+      assert.equal(request.data.waitForPlayers,true);
+      assert.equal(request.data.rules.rounds,expected);
+    }finally{h.events.Hide();}
+  }
+});
 test('game restores disabled room controls from server discovery or a legacy create conflict',async()=>{
   for(const source of ['discovery','legacy'] as const){
     const h=harness(true);
@@ -320,7 +333,7 @@ test('game requires a valid return card and can continue from settlement',async(
   h.events.TouchStart({touches:[{clientX:layout.left+(row*14+column)*layout.step+5,clientY:410}]});h.events.TouchEnd();
   h.click('确认还贡');await h.flush();assert.equal(h.actions.at(-1)?.type,'tribute');assert.equal(h.state.tribute[0].returned,true);
   h.state.status='settlement';h.state.settlement={order:[1,3,5,2,4,6],winner:'A',upgrade:3,fromLevel:'2',toLevel:'5',sweep:true,matchOver:false,reason:'test',biggestBomb:0};h.state.revision++;h.publish();
-  assert.ok(h.texts().some(t=>t.s.includes('A 队获胜')));h.click('下一局');await h.flush();assert.equal(h.actions.at(-1)?.type,'next');assert.equal(h.state.round,2);
+  assert.ok(h.texts().some(t=>t.s.includes('A 队获胜')));h.click('下一局 · 打 5');await h.flush();assert.equal(h.actions.at(-1)?.type,'next');assert.equal(h.state.round,2);
   assert.equal(h.errors.length,0);h.events.Hide();
 });
 

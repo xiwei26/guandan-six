@@ -128,6 +128,20 @@ test('computer room accepts additional real players and fills the remaining seat
   } finally {await app.close();}
 });
 
+test('computer rooms default to playing through A and honor the selected match length',async()=>{
+  const app=await launch();
+  try {
+    const player=await app.login('电脑局规则');
+    const defaultRoom=await app.api('/api/demo',player.token,{waitForPlayers:true});
+    assert.equal((defaultRoom.data.room as RoomView).rules.rounds,'A');
+    const defaultId=(defaultRoom.data.room as RoomView).roomId;
+    await app.api(`/api/rooms/${defaultId}/actions`,player.token,{action:{type:'leave'}});
+    const fixedRoom=await app.api('/api/demo',player.token,{waitForPlayers:true,rules:{rounds:2,turnSeconds:15}});
+    assert.equal((fixedRoom.data.room as RoomView).rules.rounds,2);
+    assert.equal((fixedRoom.data.room as RoomView).rules.turnSeconds,15);
+  } finally {await app.close();}
+});
+
 test('computer room allows players to leave completely during game',async()=>{
   const app=await launch();
   try {

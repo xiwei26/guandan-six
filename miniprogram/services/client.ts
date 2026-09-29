@@ -65,12 +65,12 @@ export class MiniClient {
     }catch(e){if(!(e instanceof ApiError&&[404,405].includes(e.status)))throw e;}
     return this.roomId(); // Older servers recover the room from their create/join conflict instead.
   }
-  async enter(mode:'create'|'join'|'demo',value?:Partial<RuleConfig>|string|{waitForPlayers:boolean}):Promise<RoomView> {
+  async enter(mode:'create'|'join'|'demo',value?:Partial<RuleConfig>|string):Promise<RoomView> {
     const base=this.server(),token=this.session()?.token;
     this.roomGeneration++;
     const path=mode==='create'?'/api/rooms':mode==='demo'?'/api/demo':`/api/rooms/${value}/join`;
     try{
-      const result=await this.request<{room:RoomView}>(path,mode==='create'?{rules:value}:mode==='demo'?{waitForPlayers:true}:{});
+      const result=await this.request<{room:RoomView}>(path,mode==='create'?{rules:value}:mode==='demo'?{waitForPlayers:true,rules:value}:{});
       if(base!==this.server()||token!==this.session()?.token)throw new Error('登录或服务地址已变更，请重新进入');
       this.remember(result.room.roomId);return result.room;
     }catch(e){

@@ -67,6 +67,7 @@ test('room enforces fixed rules, six players, host start and readiness; server d
   applyAction(state,'p1',{ type: 'start' });
   assert.equal(state.status,'playing');
   assert.equal(state.round,1);
+  assert.equal(state.currentLevel,'2');
   assert.ok(state.currentTurnSeat >= 1 && state.currentTurnSeat <= 6);
   assert.ok(state.players.every(p => p.hand.length === 27));
   assert.equal(new Set(state.players.flatMap(p => p.hand.map(c => c.id))).size,162);
@@ -215,15 +216,21 @@ test('wind skips finished teammates and falls back clockwise if the whole team h
   assert.equal(state.status,'playing');
 });
 
-test('round waits for five finishers, assigns the last rank and awards +1/+2/+3/+4 by trailing opponents', () => {
-  for (const [order,upgrade] of [ [[1,3,5,2,4,6],4], [[1,2,3,5,4,6],3], [[1,3,2,4,5,6],2], [[1,2,3,4,6,5],1] ] as [number[],number][]) {
+test('round waits for five finishers, upgrades from 2, and starts the next round at the winner level', () => {
+  for (const [order,upgrade,toLevel] of [ [[1,3,5,2,4,6],4,'6'], [[1,2,3,5,4,6],3,'5'], [[1,3,2,4,5,6],2,'4'], [[1,2,3,4,6,5],1,'3'] ] as [number[],number,Rank][]) {
     const state = nearFinish(order);
     play(state,order[4]);
     assert.deepEqual(state.finishOrder,order);
     assert.equal(state.settlement!.upgrade,upgrade);
+    assert.equal(state.settlement!.fromLevel,'2');
+    assert.equal(state.settlement!.toLevel,toLevel);
     assert.equal(state.players[order[5] - 1].finishRank,6);
     assert.equal(state.players[order[5] - 1].hand.length,1);
     assert.equal(state.status,'settlement');
+    applyAction(state,'p1',{type:'next'});
+    assert.equal(state.round,2);
+    assert.equal(state.currentLevel,toLevel);
+    assert.ok(['tribute','playing'].includes(state.status));
   }
 });
 

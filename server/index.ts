@@ -238,7 +238,7 @@ export function createApplication(options: Options = {}) {
         const data=await body(req);
         if (path==='/api/demo' && options.demo===false) throw new HttpError(403,'当前环境未开放体验桌');
         const computer=path==='/api/demo';
-        const room=allocate(session,computer?{rounds:1,turnSeconds:30}:data.rules as Parameters<typeof createRoom>[3],computer?'computer':'friends');
+        const room=allocate(session,data.rules as Parameters<typeof createRoom>[3],computer?'computer':'friends');
         const host=room.players.find(player=>player.userId===session.userId)!;host.avatarVersion=session.avatarVersion??null;host.avatarMime=session.avatarMime??null;
         if (path==='/api/demo') {
           applyAction(room,session.userId,{type:'ready',ready:true});
