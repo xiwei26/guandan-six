@@ -17,13 +17,15 @@ export interface Player { userId: string; nickname: string; seat: number; team: 
 export interface PublicPlayer extends Omit<Player,'hand'> {remainingCards: number|null}
 export interface Tribute { from: number; to: number; given: boolean; returned: boolean; card?: Card; returnCard?: Card }
 export interface MatchStats { rounds: number; firsts: Record<string,number>; sweeps: Record<Team,number>; bombs: Record<number,number>; biggestBomb: number; totalPlays: number }
-export interface Settlement { order: number[]; winner: Team; upgrade: number; fromLevel: Rank; toLevel: Rank; sweep: boolean; matchOver: boolean; reason: string; biggestBomb: number }
+/** A team that failed an A attempt this round; `reset` marks the third failure, which sends the team back to 2. */
+export interface AceAttempt { team: Team; count: number; reset: boolean }
+export interface Settlement { order: number[]; winner: Team; upgrade: number; fromLevel: Rank; toLevel: Rank; sweep: boolean; matchOver: boolean; reason: string; biggestBomb: number; ace?: AceAttempt[] }
 export interface GameState {
  roomId: string; hostId: string; mode: RoomMode; players: Player[]; rules: RuleConfig; status: 'waiting'|'tribute'|'playing'|'settlement'|'finished';
  round: number; currentLevel: Rank; teamLevels: Record<Team,Rank>; currentTurnSeat: number;
  lastPlay: Combination|null; lastPlaySeat: number|null; passSeats: number[]; finishOrder: number[];
  tribute: Tribute[]; tributeResisted: boolean; settlement: Settlement|null; deadline: number|null;
- revision: number; messages: string[]; totalPlays: number; biggestBomb: number; roundBomb: number; playedCounts: Record<string,number>; matchStats: MatchStats; createdAt: number;
+ revision: number; messages: string[]; aceFailures: Record<Team,number>; totalPlays: number; biggestBomb: number; roundBomb: number; playedCounts: Record<string,number>; matchStats: MatchStats; createdAt: number;
 }
 export interface RoomView extends Omit<GameState,'players'> {players: PublicPlayer[]; mySeat: number; hand: Card[]}
 export type GameAction = {type:'ready';ready:boolean}|{type:'start'}|{type:'swap';seat:number;target:number}|{type:'shuffleTeams'}|{type:'play';cardIds:string[]}|{type:'pass'}|{type:'auto';enabled:boolean}|{type:'tribute';cardId?:string}|{type:'next'}|{type:'leave'};

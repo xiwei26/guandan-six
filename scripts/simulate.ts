@@ -66,7 +66,8 @@ function verify(state: GameState, discarded: Set<string>) {
   assert.ok(remaining.every(id => allIds.has(id) && !discarded.has(id)), 'Played card reappeared in a hand');
   assert.equal(new Set(state.finishOrder).size, state.finishOrder.length, 'Duplicate finish rank');
   for (const player of state.players) {
-    if (player.finishRank && player.finishRank < 6) assert.equal(player.hand.length, 0);
+    // Mid-round finishers have played out; at settlement, a one-team remainder is ranked by cards still held.
+    if (player.finishRank && state.status === 'playing') assert.equal(player.hand.length, 0);
     if (player.finishRank) assert.equal(state.finishOrder[player.finishRank - 1], player.seat);
   }
   if (state.status === 'playing') {

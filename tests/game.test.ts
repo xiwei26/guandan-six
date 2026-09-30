@@ -203,17 +203,64 @@ test('a finishing leader passes wind to the clockwise nearest active teammate', 
   assert.match(state.messages.at(-1)!,/接风/);
 });
 
-test('wind skips finished teammates and falls back clockwise if the whole team has finished', () => {
-  const state = handFixture([[],['4'],[],['6'],['3'],['8']]);
+test('once the winning team has all finished, the rest are ranked by cards left without playing on', () => {
+  const state = handFixture([[],['4','5','6'],[],['6'],['3'],['8','9']]);
   state.finishOrder = [1,3];
   state.players[0].finishRank = 1;
   state.players[2].finishRank = 2;
   state.currentTurnSeat = 5;
   play(state,5);
-  for (const seat of [6,2,4]) applyAction(state,`p${seat}`,{ type: 'pass' });
-  assert.equal(state.currentTurnSeat,6);
-  assert.equal(state.lastPlay,null);
-  assert.equal(state.status,'playing');
+  // Seat 2 holds the most cards and becomes 末游; seat 4 holds the fewest and becomes 四游.
+  assert.deepEqual(state.settlement!.order,[1,3,5,4,6,2]);
+  assert.equal(state.status,'settlement');
+  assert.equal(state.settlement!.upgrade,4);
+  assert.equal(state.players[1].hand.length,3,'unplayed cards stay in hand until the next deal');
+});
+
+test('a one-team remainder of the winning side is also ranked by cards left', () => {
+  const state = handFixture([[],[],['5','6'],[],['7'],['8']]);
+  state.finishOrder = [1,2,4];
+  for (const [i,seat] of state.finishOrder.entries()) state.players[seat - 1].finishRank = i + 1;
+  state.currentTurnSeat = 6;
+  play(state,6);
+  // The whole opposing team is out, so seats 3 and 5 are ranked by cards left: seat 3 holds more and is 末游.
+  assert.deepEqual(state.settlement!.order,[1,2,4,6,5,3]);
+  assert.equal(state.settlement!.upgrade,1);
+});
+
+test('A attempts need 头游 with an opposing 末游; failures repeat A or let the other team climb, and three reset to 2', () => {
+  const ownLast = nearFinish([1,2,3,4,6,5],'A');ownLast.teamLevels.B = '7';play(ownLast,6);
+  assert.equal(ownLast.status,'settlement');assert.deepEqual(ownLast.aceFailures,{A:1,B:0});
+  assert.deepEqual(ownLast.settlement!.ace,[{team:'A',count:1,reset:false}]);assert.equal(ownLast.teamLevels.A,'A');
+  ownLast.rules.resistance = false;applyAction(ownLast,'p1',{type:'next'});assert.equal(ownLast.currentLevel,'A','头游 but own 末游 plays A again');
+
+  const opponentFirst = nearFinish([2,1,3,4,5,6],'A');opponentFirst.teamLevels.B = '7';play(opponentFirst,5);
+  assert.equal(opponentFirst.status,'settlement');assert.equal(opponentFirst.aceFailures.A,1);assert.equal(opponentFirst.teamLevels.B,'8');
+  applyAction(opponentFirst,'p1',{type:'next'});assert.equal(opponentFirst.currentLevel,'8','the other team keeps climbing');
+
+  const third = nearFinish([1,2,3,4,6,5],'A');third.teamLevels.B = '7';third.aceFailures.A = 2;play(third,6);
+  assert.deepEqual(third.settlement!.ace,[{team:'A',count:3,reset:true}]);assert.equal(third.teamLevels.A,'2');assert.equal(third.aceFailures.A,0);
+  assert.equal(third.settlement!.toLevel,'2');
+
+  const notAceRound = nearFinish([2,1,3,4,5,6],'7');notAceRound.teamLevels.A = 'A';play(notAceRound,5);
+  assert.deepEqual(notAceRound.aceFailures,{A:0,B:0},'a team at A only attempts in a round played at A');
+});
+
+test('tribute follows the four tail cases and pairs the largest tribute with 头游', () => {
+  const cases: [number[],[number,number][]][] = [
+    [[1,3,5,2,4,6],[[2,1],[4,3],[6,5]]],
+    [[1,2,3,5,4,6],[[4,1],[6,3]]],
+    [[1,2,3,4,5,6],[[6,1]]],
+    [[1,2,3,4,6,5],[[5,1]]],
+  ];
+  for (const [order,pairs] of cases) {
+    const state = nearFinish(order);play(state,order[4]);state.rules.resistance = false;
+    applyAction(state,'p1',{type:'next'});
+    const best = (seat: number) => Math.max(...state.players[seat - 1].hand.filter(c => !isWildcard(c,state.currentLevel)).map(c => cardStrength(c,state.currentLevel)));
+    assert.deepEqual(state.tribute.map(t => t.from).sort(),pairs.map(([from]) => from).sort(),order.join(','));
+    assert.deepEqual(state.tribute.map(t => t.to),[...new Set(pairs.map(([,to]) => to))].sort((a,b) => order.indexOf(a) - order.indexOf(b)));
+    assert.ok(state.tribute.every((t,i) => i === 0 || best(state.tribute[i - 1].from) >= best(t.from)),'bigger tribute cards go to better-placed winners');
+  }
 });
 
 test('round waits for five finishers, upgrades from 2, and starts the next round at the winner level', () => {

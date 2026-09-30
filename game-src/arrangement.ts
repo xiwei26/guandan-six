@@ -1,10 +1,10 @@
-import {findHints,parseCombination,sortCards} from '../shared/cards';
-import type {Card,Rank,RuleConfig} from '../shared/types';
-export type HandGroup={ids:string[];label:string};
+import {compareCombination,findHints,parseCombination,sortCards} from '../shared/cards';
+import type {Card,CombinationType,Rank,RuleConfig} from '../shared/types';
+export type HandGroup={ids:string[];label:string;type:CombinationType;rank:number};
 export function groupCards(cards:Card[],level:Rank,rules:RuleConfig):HandGroup {
   const play=parseCombination(cards,level,rules);
   if(!play)throw new Error('这些牌不能组成合法牌型，请重新选择');
-  return {ids:sortCards(cards,level).map(c=>c.id),label:play.label};
+  return {ids:sortCards(cards,level).map(c=>c.id),label:play.label,type:play.type,rank:play.rank};
 }
 /** Greedy disjoint groups: preserve bombs first; no optimal-strategy guarantee. */
 export function arrangeHand(hand:Card[],level:Rank,rules:RuleConfig):HandGroup[]{
@@ -30,4 +30,21 @@ export function manualGroup(groups:HandGroup[],hand:Card[],ids:string[],level:Ra
   if(cards.length!==unique.size)throw new Error('手牌已变化，请重新选牌');
   const group=groupCards(cards,level,rules);
   return [group,...reconcileGroups(groups,hand.filter(c=>!unique.has(c.id)),level,rules)];
+}
+const BOMBS:CombinationType[]=['bomb','straightFlush','jokerBomb','kingBomb'];
+const strength=(group:HandGroup)=>({type:group.type,rank:group.rank,size:group.ids.length,cards:[],label:group.label});
+/** Display order only: bombs strongest first on the far left, other groups keep their order. */
+export function displayGroups(groups:HandGroup[],rules:RuleConfig):HandGroup[]{
+  const bombs=groups.filter(group=>BOMBS.includes(group.type));
+  bombs.sort((a,b)=>compareCombination(strength(b),strength(a),rules));
+  return [...bombs,...groups.filter(group=>!BOMBS.includes(group.type))];
+}
+const NUMERALS=['','一','二','三','四','五','六','七','八','九','十','十一','十二'];
+/** Display name for a combination; bombs read 四炸, 五炸 … instead of the engine's "4 炸". */
+export function patternName(type:CombinationType,size:number,label:string):string{
+  return type==='bomb'?`${NUMERALS[size]}炸`:label;
+}
+/** Short pattern tag shown on arranged groups of more than three cards. */
+export function groupTag(group:HandGroup):string|null{
+  return group.ids.length<=3?null:patternName(group.type,group.ids.length,group.label);
 }

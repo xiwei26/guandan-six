@@ -1,14 +1,19 @@
 import { MiniClient, ApiError, errorMessage } from '../miniprogram/services/client';
 import { RoomConnection, type ConnectionState } from '../miniprogram/services/connection';
-import { tableView, DEFAULT_OPTIONS, cardView } from '../miniprogram/utils/presentation';
+import { tableView, DEFAULT_OPTIONS, cardView, PLACES } from '../miniprogram/utils/presentation';
 import { canLeaveCompletely, leaveMessage } from '../miniprogram/utils/room-exit';
-import {arrangeHand,reconcileGroups,manualGroup,type HandGroup} from './arrangement';
+import {arrangeHand,reconcileGroups,manualGroup,displayGroups,groupTag,patternName,type HandGroup} from './arrangement';
 import { findHints } from '../shared/cards';
 import type { RoomView, GameAction, RuleConfig } from '../shared/types';
-import { WIDTH, HEIGHT, viewport, hitAt, handLayout, lobbySpread, type Hit } from './layout';
-import { Painter, COLORS as C } from './paint';
+import { WIDTH, HEIGHT, HAND_BOTTOM, STACK, TOP_SEAT_CX, SIDE_SEAT_HALF, viewport, hitAt, handLayout, stackLayout, seatSpots, seatBounds, lobbySpread, tableEdge, type Hit } from './layout';
+import { Painter, COLORS as C, THEMES, applyTheme, type ThemeName, type CardFace } from './paint';
+
+/** The card counter is reserved as a future paid feature; flip this to show it again. */
+const CARD_COUNTER_ENABLED=false;
 
 type TouchEvent={touches:{clientX:number;clientY:number}[]};
+type Box={x:number;y:number;w:number;h:number};
+type HandItems={cards:{view:CardFace;id:string;x:number;y:number;w:number;h:number;index:'row'|'column'}[];tags:{label:string;right:number;bottom:number}[]};
 type Launch={query?:Record<string,string>};
 export type GamePlatform=Pick<typeof wx,'request'|'login'|'getStorageSync'|'setStorageSync'|'removeStorageSync'|'getAccountInfoSync'|'connectSocket'|'showModal'|'showToast'|'setClipboardData'|'onNetworkStatusChange'> & {
   env:{USER_DATA_PATH:string};
@@ -39,10 +44,12 @@ const RULES=[
   '支持单张、对子、三张、三带二、顺子、三连对、钢板、同花顺、4–12 张炸弹。',
   '天王炸 > 12–7 炸 > 三大王 > 三小王 > 6 炸 > 同花顺 > 5 炸 > 4 炸。王炸不许配牌。',
   '头游队获胜。末尾连续 3 / 2 / 1 名对手，升 4 / 3 / 2 级；末游同队只升 1 级。例如打 2 升 4 级，下局打 6；升 2 级，下局打 4。',
+  '胜方三人出完后，其余玩家不再出牌，按剩牌数从多到少排为末游、五游、四游，直接进入下一局。',
   '出完者最后一手无人压，由顺时针最近的未出完队友接风，无队友则由下一人首出。',
-  '按升级数进贡，最多三贡；进最大非逢人配牌；还 2–9 非级牌，没有时还最小非逢人配。',
+  '末尾 3 / 2 / 1 名均为对手时，这几名对手进贡；末游与头游同队时，末游向本队头游进贡。贡牌按大小依次给头游及其后的胜方玩家。进最大非逢人配牌；还 2–9 非级牌，没有时还最小非逢人配。',
   '单贡者有 2 张大王可抗贡；双/三贡败队合计 3 张大王可抗贡。抗贡由上局头游首出。',
-  '打到 A 需在己方 A 级且当前打 A 时获胜。固定局数打满结束，展示等级与本局排名。'
+  '打到 A：须在己方打 A 的一局拿到头游，且末游是对方。对方头游，或头游末游都是己方，记闯关失败一次；前者对方继续升级，后者下局继续打 A。累计失败 3 次退回打 2。',
+  '固定局数打满结束，展示等级与本局排名。'
 ];
 
 export class GuandanGame {
@@ -54,6 +61,7 @@ export class GuandanGame {
   private view=viewport(WIDTH,HEIGHT);
   private background={x:0,y:0,w:WIDTH,h:HEIGHT};
   private spread=0;
+  private edge=0;
   private hitOffset=0;
   private hits:Hit[]=[];
   private room:RoomView|null=null;
@@ -67,8 +75,7 @@ export class GuandanGame {
   private groups:HandGroup[]|null=null;
   private hintIndex=0;
   private drag?:{select:boolean;seen:Set<string>};
-  private actionBar={x:244,y:146};
-  private actionBarDrag?:{dx:number;dy:number};
+  private theme:ThemeName='green';
   private avatarImages=new Map<string,{version:string;image?:HTMLImageElement;loading:boolean}>();
   private profileOpen=false;
   private profileNickname='';
@@ -85,17 +92,16 @@ export class GuandanGame {
   private swapping=false;
   constructor(private platform:GamePlatform) {
     this.api=new MiniClient(platform);this.nickname=this.api.session()?.nickname||'牌友';
-    const saved=platform.getStorageSync('gd6.ui.actionBar') as {x?:number;y?:number}|undefined;
-    if(saved&&Number.isFinite(saved.x)&&Number.isFinite(saved.y))this.actionBar={x:saved.x!,y:saved.y!};
-    this.clampActionBar();
+    const theme=platform.getStorageSync('gd6.ui.theme') as ThemeName|undefined;
+    if(theme&&theme in THEMES)this.theme=theme;applyTheme(this.theme);
     this.canvas=platform.createCanvas();this.ctx=this.canvas.getContext('2d')!;this.paint=new Painter(this.ctx);
     this.resize();
     platform.onWindowResize(()=>this.resize());
     platform.onTouchStart(e=>this.touch(e,false));platform.onTouchMove(e=>this.touch(e,true));
-    platform.onTouchEnd(()=>{this.drag=undefined;this.finishActionBarDrag();});platform.onTouchCancel(()=>{this.drag=undefined;this.finishActionBarDrag();});
+    platform.onTouchEnd(()=>{this.drag=undefined;});platform.onTouchCancel(()=>{this.drag=undefined;});
     platform.onKeyboardConfirm(e=>this.finishInput(e.value));
     platform.onKeyboardComplete(()=>{this.editing=undefined;this.draw();});
-    platform.onHide(()=>{this.visible=false;this.epoch++;this.connection?.stop();this.drag=undefined;this.finishActionBarDrag();this.stopClock();});
+    platform.onHide(()=>{this.visible=false;this.epoch++;this.connection?.stop();this.drag=undefined;this.stopClock();});
     platform.onShow(launch=>{this.visible=true;this.launch(launch);this.startClock();if(this.room)void this.restore(this.room.roomId);else{this.draw();void this.syncLobbyRoom();}});
     platform.onNetworkStatusChange(e=>{if(e.isConnected&&this.visible){if(this.room)void this.restore(this.room.roomId);else void this.syncLobbyRoom();}});
     platform.showShareMenu({menus:['shareAppMessage']});platform.onShareAppMessage(()=>this.share());
@@ -109,27 +115,38 @@ export class GuandanGame {
     this.canvas.width=Math.round(info.windowWidth*dpr);this.canvas.height=Math.round(info.windowHeight*dpr);
     this.view=viewport(info.windowWidth,info.windowHeight,info.safeArea);
     this.spread=lobbySpread(info.windowWidth,info.windowHeight,info.safeArea);
+    this.edge=tableEdge(info.windowWidth,info.windowHeight,info.safeArea);
     this.background={x:-this.view.x/this.view.scale,y:-this.view.y/this.view.scale,w:info.windowWidth/this.view.scale,h:info.windowHeight/this.view.scale};
     this.ctx.setTransform(dpr*this.view.scale,0,0,dpr*this.view.scale,dpr*this.view.x,dpr*this.view.y);this.draw();}
   private text(s:string,x:number,y:number,size=18,color:string=this.paper?C.ink:C.text){this.paint.text(s,x,y,size,color);}
   private centeredText(s:string,x:number,y:number,size:number,color:string,maxWidth:number){
     const c=this.ctx;c.save();c.font=`400 ${size}px sans-serif`;c.textAlign='center';c.textBaseline='middle';let label=s;
-    while(label.length&&c.measureText(label+'…').width>maxWidth)label=label.slice(0,-1);if(label!==s)label+='…';
+    if(c.measureText(label).width>maxWidth){while(label.length&&c.measureText(label+'…').width>maxWidth)label=label.slice(0,-1);label+='…';}
     c.fillStyle=color;c.fillText(label,x,y,maxWidth);c.restore();
   }
-  private box(x:number,y:number,w:number,h:number,color:string){this.paint.rect(x,y,w,h,color,Math.min(12,h/3));}
   private button(label:string,x:number,y:number,w:number,run:()=>void,enabled=true,primary=false,height=40,fontSize=16){
     const fill=primary?C.gold:this.paper?C.soft:C.panel;
-    this.paint.rect(x,y,w,height,enabled?fill:this.paper?'#eeebe1':'#203e38',8,primary?'#f0d7a3':this.paper?'#d9decf':C.line);
-    this.paint.text(label,x+12,y+height/2,fontSize,enabled?(primary||this.paper?C.ink:C.text):this.paper?'#8a9383':'#80968b',primary?600:400,'sans-serif',w-24);
+    this.paint.rect(x,y,w,height,enabled?fill:this.paper?'#eeebe1':C.disabled,8,primary?'#f0d7a3':this.paper?'#d9decf':C.line);
+    this.paint.text(label,x+12,y+height/2,fontSize,enabled?(primary||this.paper?C.ink:C.text):this.paper?'#8a9383':C.disabledText,primary?600:400,'sans-serif',w-24);
     if(enabled&&!this.busy)this.hits.push({x:x+this.hitOffset,y,w,h:height,run});
   }
-  private clampActionBar(){this.actionBar.x=Math.max(18,Math.min(WIDTH-474-18,this.actionBar.x));this.actionBar.y=Math.max(122,Math.min(262,this.actionBar.y));}
-  private finishActionBarDrag(){if(!this.actionBarDrag)return;this.actionBarDrag=undefined;this.platform.setStorageSync('gd6.ui.actionBar',this.actionBar);this.draw();}
+  private setTheme(theme:ThemeName){this.theme=theme;applyTheme(theme);this.platform.setStorageSync('gd6.ui.theme',theme);this.draw();}
+  /** Table colour swatches; centred on `cx` when `centered` is set, otherwise starting at `x`. */
+  private themePicker(x:number,y:number,centered=false){
+    const names=Object.keys(THEMES) as ThemeName[],chip=74,gap=8,labelWidth=40;
+    const left=centered?x-(labelWidth+names.length*chip+(names.length-1)*gap)/2:x;
+    this.paint.text('桌面',left,y+14,13,C.muted);
+    names.forEach((name,i)=>{
+      const cx=left+labelWidth+i*(chip+gap),selected=this.theme===name;
+      this.paint.rect(cx,y,chip,28,selected?'#ffffff1c':'#00000022',14,selected?C.gold:C.line);
+      this.paint.ellipse(cx+16,y+14,8,8,THEMES[name].feltCenter,'#ffffff66');
+      this.paint.text(THEMES[name].label,cx+30,y+14,13,selected?C.gold:C.text);
+      this.hits.push({x:cx+this.hitOffset,y,w:chip,h:28,run:()=>this.setTheme(name)});
+    });
+  }
   private touch(e:TouchEvent,moving:boolean){if(this.busy||this.editing)return;const t=e.touches[0];if(!t)return;
     const x=(t.clientX-this.view.x)/this.view.scale,y=(t.clientY-this.view.y)/this.view.scale;
-    if(this.actionBarDrag&&moving){this.actionBar.x=x-this.actionBarDrag.dx;this.actionBar.y=y-this.actionBarDrag.dy;this.clampActionBar();this.draw();return;}
-    if(!moving){this.drag=undefined;if(this.room&&this.room.status!=='waiting'&&x>=this.actionBar.x&&x<=this.actionBar.x+25&&y>=this.actionBar.y&&y<=this.actionBar.y+44){this.actionBarDrag={dx:x-this.actionBar.x,dy:y-this.actionBar.y};return;}}
+    if(!moving)this.drag=undefined;
     const h=hitAt(this.hits,x,y);
     if(!moving){if(h?.card)this.drag={select:!this.selected.includes(h.card),seen:new Set()};}
     if(h?.card&&this.drag){if(!this.drag.seen.has(h.card)){this.drag.seen.add(h.card);this.selected=this.drag.select?[...new Set([...this.selected,h.card])]:this.selected.filter(id=>id!==h.card);this.draw();}}
@@ -243,7 +260,7 @@ export class GuandanGame {
   }
   private lobby(){
     this.ctx.save();this.ctx.translate(-this.spread,0);this.hitOffset=-this.spread;
-    this.paint.suit('♣',56,34,25,C.gold);this.text('好友相聚，开一局',94,48,14,C.muted);
+    this.paint.suit('♣',56,34,25,C.gold);this.text('好友相聚，开一局',94,48,14,C.muted);this.themePicker(248,34);
     this.paint.text('六人掼蛋',56,128,54,C.text,600,'"Songti SC", SimSun, serif');
     this.text('三副牌 · 六人同桌 · 隔位组队',60,180,18,C.muted);
     this.paint.lobbyArt();this.text('27 张手牌，和队友一起打到 A。',108,410,17,C.muted);
@@ -278,143 +295,204 @@ export class GuandanGame {
   }
   private roomOptions(){this.configuring=true;this.draw();}
   private drawOptions(){this.hits=[];this.paint.scrim();this.paint.paperPanel(220,80,520,390);this.paper=true;this.text('房间设置',250,118,28,C.ink);
-    const toggles=[['showRemaining','显示剩余牌数'],['allowAutoPlay','允许托管'],['allowCounter','记牌器'],['resistance','抗贡']] as const;
+    const toggles=([['showRemaining','显示剩余牌数'],['allowAutoPlay','允许托管'],['allowCounter','记牌器'],['resistance','抗贡']] as const).filter(([key])=>key!=='allowCounter'||CARD_COUNTER_ENABLED);
     toggles.forEach(([key,label],i)=>this.button(`${label}：${this.options[key]?'开':'关'}`,250,154+i*54,460,()=>{this.options[key]=!this.options[key];this.draw();}));
     this.button('完成',250,402,460,()=>{this.configuring=false;this.draw();},true,true);
   }
   private table(){this.polishedTable();}
+  /** Opponents' card counts appear only once they are down to ten cards or fewer. */
+  private seatStatus(room:RoomView,seat:ReturnType<typeof tableView>['seats'][number],player?:RoomView['players'][number]){
+    if(!player)return seat.team+'队 · '+seat.detail;
+    const own=seat.relative===0,count=own?room.hand.length:player.remainingCards;
+    const info=seat.offline?['离线']:seat.pass?['不出']:player.finishRank?[PLACES[player.finishRank-1]]
+      :[count!==null&&count<=10?(own?'仅剩 ':'')+count+' 张':'',player.bot?'机器人':player.autoPlay?'托管':''];
+    return [seat.team+'队',...info].filter(Boolean).join(' · ');
+  }
+  private measure(s:string,size:number,weight=400){const c=this.ctx;c.save();c.font=`${weight} ${size}px sans-serif`;const width=c.measureText(s).width;c.restore();return width;}
   private polishedTable(){
-    const room=this.room!,vm=tableView(room,this.selected,'rank'),online=this.state==='online';
-    const seats=[{cx:68,y:282},{cx:870,y:190},{cx:870,y:100},{cx:480,y:50},{cx:68,y:100},{cx:68,y:190}];
-    this.paint.suit('♣',24,16,24,C.gold);this.paint.text('六人掼蛋',58,29,22,C.text,600,'serif');
-    this.text((room.mode==='computer'?'电脑局':'好友房')+' '+room.roomId,181,29,16,C.muted);
-    this.text('规则 '+room.rules.ruleVersion+(room.rules.ruleVersion==='6P_V1'?' · 旧版房间':''),24,68,13,C.muted);
-    this.paint.line(24,48,628,48);this.text('第 '+room.round+' 局 · 打 '+room.currentLevel,354,28,17,C.gold);
-    this.text('A '+room.teamLevels.A,529,28,18,C.blue);this.text(' / ',577,28,16,C.muted);this.text('B '+room.teamLevels.B,602,28,18,C.orange);
-    this.paint.table(vm.waiting);
-    this.button('邀请',658,52,80,()=>this.platform.shareAppMessage(this.share()));this.button('大厅',746,52,80,()=>this.leave());
-    this.button(online?'已连接':'重连',834,52,100,()=>void this.restore(room.roomId),!online);
+    const room=this.room!,vm=tableView(room,this.selected,'rank'),online=this.state==='online',spots=seatSpots(this.edge);
+    this.paint.suit('♣',22,13,22,C.gold);this.paint.text('六人掼蛋',52,24,21,C.text,600,'serif');
+    this.text((room.mode==='computer'?'电脑局':'好友房')+' '+room.roomId,150,17,14,C.muted);
+    this.text('规则 '+room.rules.ruleVersion+(room.rules.ruleVersion==='6P_V1'?' · 旧版房间':''),150,33,11,C.muted);
+    // The round label is placed so its "局" sits directly above the top seat's avatar.
+    const lead='第 '+room.round+' ';
+    this.text(lead+'局 · 打 '+room.currentLevel,TOP_SEAT_CX-this.measure(lead,16)-this.measure('局',16)/2,24,16,C.gold);
+    let levelX=410;
+    const level=(s:string,size:number,color:string)=>{this.text(s,levelX,24,size,color);levelX+=this.measure(s,size);};
+    for(const team of ['A','B'] as const){
+      if(team==='B'){levelX+=8;level('/',15,C.muted);levelX+=8;}
+      level(team+' '+room.teamLevels[team],17,team==='A'?C.blue:C.orange);
+      const failures=room.aceFailures?.[team]??0;if(failures)level(` 失败${failures}/3`,11,C.gold);
+    }
+    // Header actions stay left of the WeChat capsule. Invite and connection status are pre-game only; reconnect returns when offline.
+    if(vm.waiting)this.button('邀请',562,6,64,()=>this.platform.shareAppMessage(this.share()),true,false,30,14);
+    if(vm.waiting||!online)this.button(online?'已连接':'重连',632,6,76,()=>void this.restore(room.roomId),!online,false,30,14);
+    this.button('返回大厅',714,6,92,()=>this.leave(),true,false,30,14);
+    let topTextRight=TOP_SEAT_CX+40;
     vm.seats.forEach(seat=>{
-      const {cx,y}=seats[seat.relative],own=seat.relative===0,size=own?48:44,teamColor=seat.team==='A'?C.blue:C.orange;
+      const spot=spots[seat.relative],{cx,y,size}=spot,own=seat.relative===0,teamColor=seat.team==='A'?C.blue:C.orange;
       const player=room.players.find(item=>item.seat===seat.seat),avatar=player?this.avatarImages.get(player.userId)?.image:undefined;
       if(seat.active)this.paint.ellipse(cx,y+size/2,size/2+5,size/2+5,'transparent',C.gold);
       if(this.swapSeat===seat.seat)this.paint.ellipse(cx,y+size/2,size/2+7,size/2+7,'transparent',C.gold);
       this.paint.avatar(seat.initial,cx,y,size,seat.team as 'A'|'B',avatar);
-      this.centeredText(own?seat.nickname.replace(/ · 你$/,''):seat.nickname,cx,y+size+12,own?12:13,C.text,148);
-      const secondary=vm.waiting?seat.team+'队 · '+(seat.ready?'已准备':'未准备')
-        :own?(room.hand.length<=10?'仅剩 '+room.hand.length+' 张':'')
-        :seat.team+'队 · '+(seat.offline?'离线':seat.pass?'不出':seat.detail);
-      if(secondary)this.centeredText(secondary,cx,y+size+29,11,seat.low?C.gold:teamColor,154);
-      if(own)this.hits.push({x:cx-size/2,y,w:size,h:size,run:()=>this.openProfile()});
-      if(this.swapping)this.hits.push({x:cx-42,y:y-3,w:84,h:size+35,run:()=>{
+      const name=own?seat.nickname.replace(/ · 你$/,''):seat.nickname,color=seat.low?C.gold:teamColor;
+      const secondary=vm.waiting?seat.team+'队 · '+(seat.ready?'已准备':'未准备'):this.seatStatus(room,seat,player);
+      if(spot.row){
+        const x=cx+size/2+9;this.paint.text(name,x,y+size/2-8,13,C.text,500,'sans-serif',124);this.paint.text(secondary,x,y+size/2+9,11,color,400,'sans-serif',150);
+        if(seat.relative===3)topTextRight=x+Math.min(150,Math.max(this.measure(name,13,500),this.measure(secondary,11)));
+      }else{
+        // Names stay narrow beside a play hugging the avatar; the status line may use the room out to the screen edge.
+        const reach=Math.min(77,cx<WIDTH/2?cx+this.edge-4:WIDTH+this.edge-cx-4);
+        this.centeredText(name,cx,y+size+11,13,C.text,SIDE_SEAT_HALF*2-8);this.centeredText(secondary,cx,y+size+27,11,color,reach*2);
+      }
+      const bounds=seatBounds(seat.relative,this.edge);
+      if(own)this.hits.push({...bounds,run:()=>this.openProfile()});
+      if(this.swapping)this.hits.push({...bounds,run:()=>{
         if(!this.swapSeat){this.swapSeat=seat.seat;this.draw();}
         else{this.act({type:'swap',seat:this.swapSeat,target:seat.seat});this.swapping=false;this.swapSeat=0;}
       }});
     });
     if(vm.waiting){
       const realCount=room.players.filter(player=>!player.bot).length;
-      this.centeredText(room.mode==='computer'?'真人不满六人，空位电脑补位':'等待六位牌友准备',480,252,26,C.text,590);
-      this.centeredText(room.mode==='computer'?'当前 '+realCount+' 位真人 · '+vm.readyCount+' 位已准备 · '+vm.roundText:vm.readyCount+' / 6 已准备 · '+vm.roundText,480,293,19,C.muted,620);
-      this.centeredText(this.swapping?(this.swapSeat?'再点目标座位完成换座':'先选未准备玩家，再选目标座位'):'分享房间号，邀请好友入座',480,334,16,C.muted,620);
-      this.button(this.swapping?'换座 '+(this.swapSeat||'选座'):'调整座位',28,480,196,()=>{this.swapping=!this.swapping;this.swapSeat=0;this.draw();},online&&vm.host,false,48,19);
-      this.button('随机组队',236,480,196,()=>this.act({type:'shuffleTeams'}),online&&vm.host&&vm.canShuffle,false,48,19);
-      this.button(vm.me.ready?'取消准备':'准备',460,480,206,()=>this.act({type:'ready',ready:!vm.me.ready}),online,!vm.me.ready,48,19);
-      this.button('开始',678,480,254,()=>this.act({type:'start'}),online&&vm.host&&vm.allReady,true,48,19);return;
+      this.centeredText(room.mode==='computer'?'真人不满六人，空位电脑补位':'等待六位牌友准备',480,214,26,C.text,590);
+      this.centeredText(room.mode==='computer'?'当前 '+realCount+' 位真人 · '+vm.readyCount+' 位已准备 · '+vm.roundText:vm.readyCount+' / 6 已准备 · '+vm.roundText,480,252,19,C.muted,620);
+      this.centeredText(this.swapping?(this.swapSeat?'再点目标座位完成换座':'先选未准备玩家，再选目标座位'):'分享房间号，邀请好友入座',480,286,16,C.muted,620);
+      this.themePicker(480,318,true);
+      this.button(this.swapping?'换座 '+(this.swapSeat||'选座'):'调整座位',142,380,160,()=>{this.swapping=!this.swapping;this.swapSeat=0;this.draw();},online&&vm.host,false,48,19);
+      this.button('随机组队',314,380,160,()=>this.act({type:'shuffleTeams'}),online&&vm.host&&vm.canShuffle,false,48,19);
+      this.button(vm.me.ready?'取消准备':'准备',486,380,150,()=>this.act({type:'ready',ready:!vm.me.ready}),online,!vm.me.ready,48,19);
+      this.button('开始',648,380,170,()=>this.act({type:'start'}),online&&vm.host&&vm.allReady,true,48,19);return;
     }
-    if(room.lastPlay&&room.lastPlaySeat!==null&&vm.played.length){
-      const relative=(room.lastPlaySeat-room.mySeat+6)%6,myPlay=relative===0,topPlay=relative===3;
-      if(myPlay){
-        const cardWidth=42,cardHeight=63,gap=24,total=cardWidth+(vm.played.length-1)*gap,start=480-total/2;
-        this.centeredText(vm.lastLabel.slice(0,24),480,198,12,C.muted,210);
-        vm.played.forEach((card,index)=>this.card(card,start+index*gap,247,cardWidth,cardHeight));
-      }else{
-        const cardWidth=48,cardHeight=64,gap=46,rowCount=vm.played.length>6?2:1,rowCapacity=Math.ceil(vm.played.length/rowCount);
-        const centerX=topPlay?480:relative===1||relative===2?648:292,firstY=rowCount===2?214:223;
-        this.centeredText(vm.lastLabel.slice(0,24),centerX,firstY-11,12,C.muted,220);
-        for(let row=0;row<rowCount;row++){
-          const cards=vm.played.slice(row*rowCapacity,(row+1)*rowCapacity),rowWidth=cardWidth+(cards.length-1)*gap,start=centerX-rowWidth/2;
-          cards.forEach((card,index)=>this.card(card,start+index*gap,firstY+row*22,cardWidth,cardHeight));
-        }
-      }
-    }else if(!vm.tribute)this.centeredText('等待首出',480,224,22,C.muted,240);
-    if(vm.tribute)this.centeredText('贡还贡 · 按提示选择牌',480,220,19,C.gold,300);
-    const seconds=room.deadline===null?'不限时':Math.max(0,Math.ceil((room.deadline-Date.now())/1000))+' 秒';
-    this.drawActionBar(vm,online,seconds);
-    this.button('一键理牌',520,310,104,()=>{this.groups=arrangeHand(room.hand,room.currentLevel,room.rules);this.selected=[];this.draw();},room.hand.length>0,true,30,13);
-    this.button('组合',632,310,72,()=>{try{this.groups=manualGroup(this.groups??[],room.hand,this.selected,room.currentLevel,room.rules);this.selected=[];this.draw();}catch(error){this.error(error);}},this.selected.length>0,false,30,13);
-    this.button('还原',712,310,72,()=>{this.groups=null;this.selected=[];this.draw();},room.hand.length>0,false,30,13);
-    this.button(vm.tribute?'交换进度':vm.me.autoPlay?'取消托管':'托管',792,310,76,()=>vm.tribute?this.panel('贡还贡',vm.exchanges.map(exchange=>exchange.fromName+' → '+exchange.toName+'：'+exchange.label)):this.act({type:'auto',enabled:!vm.me.autoPlay}),vm.tribute||online&&room.rules.allowAutoPlay,false,30,12);
-    this.button('记牌',876,310,60,()=>this.panel('记牌器 · 公开信息',vm.counter.map(item=>item.label+'：'+item.count).reduce<string[]>((rows,label,index)=>{if(index%5===0)rows.push(label);else rows[rows.length-1]+='      '+label;return rows;},[])),room.rules.allowCounter,false,30,12);
+    // Lay the hand out first so plays and turn buttons can keep clear of tall arranged columns.
+    const hand=this.handItems(room,vm,spots);
+    const handTop=(x0:number,x1:number)=>Math.min(HAND_BOTTOM,...hand.cards.filter(card=>card.x<x1&&card.x+card.w>x0).map(card=>card.y));
+    let play:{box:Box;relative:number}|undefined;
+    if(room.lastPlay&&room.lastPlaySeat!==null&&vm.played.length)play=this.drawPlayed(room,vm,spots,topTextRight,handTop);
+    else if(!vm.tribute&&!vm.mine)this.centeredText('等待首出',480,140,22,C.muted,240);
+    if(vm.tribute)this.centeredText('贡还贡 · 按提示选择牌',480,100,17,C.gold,300);
+    this.drawHand(hand);
+    this.drawTools(room,vm,online);
+    this.drawTurnButtons(room,vm,online,spots,play);
+    if(vm.ended){
+      const settlement=room.settlement,winnerFailed=settlement?.ace?.some(item=>item.team===settlement.winner);
+      this.hits=[];this.paint.scrim();this.paint.paperPanel(215,102,530,364);this.paper=true;
+      this.text((settlement?.winner??'')+(winnerFailed?' 队头游 · 末游同队，闯关失败':' 队获胜 · 升 '+settlement?.upgrade+' 级'),245,139,winnerFailed?24:28,C.ink);
+      vm.ranking.forEach((entry,index)=>this.text(entry.place+'   '+entry.name.slice(0,12)+'   '+entry.team+' 队',250,184+index*32,18));
+      const ace=(settlement?.ace??[]).map(item=>item.reset?`${item.team} 队闯关失败 3 次，退回打 2`:`${item.team} 队闯关失败第 ${item.count} 次`).join('；');
+      if(ace)this.paint.text(ace,250,384,15,C.red,500,'sans-serif',470);
+      this.button(room.status==='finished'?'整场结束':`下一局 · 打 ${settlement?.toLevel??room.currentLevel}`,245,408,220,()=>this.act({type:'next'}),online&&vm.host&&room.status==='settlement',true);
+      this.button('返回大厅',487,408,220,()=>this.leave());
+    }
+  }
+  /**
+   * Opponents' plays hug their avatar (the top seat's sits right of its name); the viewer's own play is centred.
+   * A lower side seat's play rises just clear of tall arranged columns and is then labelled with the player's name.
+   */
+  private drawPlayed(room:RoomView,vm:ReturnType<typeof tableView>,spots:ReturnType<typeof seatSpots>,topTextRight:number,handTop:(x0:number,x1:number)=>number){
+    const relative=(room.lastPlaySeat!-room.mySeat+6)%6,cards=vm.played,combination=room.lastPlay!,own=relative===0;
+    const w=own?42:48,h=own?63:64,gap=own?24:46,rows=!own&&cards.length>6?2:1,perRow=Math.ceil(cards.length/rows);
+    const width=w+(perRow-1)*gap,height=h+(rows-1)*22,spot=spots[relative];
+    let x:number,y:number,lifted=false;
+    if(own){x=480-width/2;y=110;}
+    else if(relative===3){x=topTextRight+10;y=36;}
+    else{
+      x=relative>=4?spot.cx+32:spot.cx-32-width;y=spot.y-4;
+      const clear=handTop(x,x+width)-height-6;
+      if(clear<y){y=Math.max(110,clear);lifted=true;}
+    }
+    for(let row=0;row<rows;row++)cards.slice(row*perRow,(row+1)*perRow).forEach((card,i)=>this.card(card,x+i*gap,y+row*22,w,h));
+    const lastRow=cards.length-(rows-1)*perRow;
+    if(combination.type!=='single')this.paint.tag(patternName(combination.type,combination.size,combination.label),x+(lastRow-1)*gap+w-3,y+height-3);
+    if(lifted)this.centeredText(room.players.find(player=>player.seat===room.lastPlaySeat)?.nickname??'',x+width/2,y-9,12,C.muted,width);
+    return {box:{x,y,w:width,h:height},relative};
+  }
+  /** 提示 / 不出 / 出牌 and the countdown clock appear only when the viewer has to act, clear of the last play. */
+  private drawTurnButtons(room:RoomView,vm:ReturnType<typeof tableView>,online:boolean,spots:ReturnType<typeof seatSpots>,play?:{box:Box;relative:number}){
+    const tribute=room.status==='tribute',donation=room.tribute.some(item=>item.from===room.mySeat&&!item.given);
+    const repayment=room.tribute.some(item=>item.to===room.mySeat&&item.given&&!item.returned);
+    if(tribute?!donation&&!repayment:!vm.mine||vm.me.autoPlay)return;
+    const green:[string,string]=['#62bd88','#2c744a'],h=64,gap=8,clock=64;
+    const buttons:[string,number,[string,string],boolean,()=>void][]=tribute
+      ?[[vm.tributeLabel,152,green,online&&vm.canTribute,()=>this.act(donation?{type:'tribute'}:{type:'tribute',cardId:this.selected[0]})]]
+      :[['提示',140,['#5fabcc','#2b6581'],online,()=>this.hint()],['不出',140,['#cf8a63','#7f462e'],online&&vm.canPass,()=>this.act({type:'pass'})],
+        ['出牌',152,green,online&&vm.canPlay,()=>this.act({type:'play',cardIds:[...this.selected]})]];
+    const seconds=room.deadline===null?null:Math.max(0,Math.ceil((room.deadline-Date.now())/1000));
+    const total=buttons.reduce((sum,button)=>sum+button[1]+gap,0)+(seconds===null?-gap:clock);
+    let x=480-total/2,y=108;
+    const box=play?.box;
+    if(box&&box.y<y+h&&box.y+box.h>y){
+      if(play!.relative===3)y=box.y+box.h+6;
+      else if(box.x+box.w/2<WIDTH/2)x=Math.max(x,box.x+box.w+10);
+      else x=Math.min(x,box.x-10-total);
+    }
+    // Stay between the side seats so a seat name is never hidden behind the buttons.
+    x=Math.max(spots[4].cx+SIDE_SEAT_HALF+8,Math.min(spots[2].cx-SIDE_SEAT_HALF-8-total,x));
+    for(const [label,w,colors,enabled,run] of buttons){
+      this.paint.actionButton(label,x,y,w,h,colors,enabled);if(enabled&&!this.busy)this.hits.push({x,y,w,h,run});x+=w+gap;
+    }
+    if(seconds!==null)this.paint.alarmClock(x+clock/2,y+h/2,clock,String(seconds),seconds<=5);
+  }
+  /** Hand tools live in the bottom-right strip below the hand, beside the viewer's identity chip. */
+  private drawTools(room:RoomView,vm:ReturnType<typeof tableView>,online:boolean){
+    const y=505,h=30;
+    this.paint.text(vm.selectionText,206,y+h/2,12,this.selected.length?C.gold:C.muted,400,'sans-serif',CARD_COUNTER_ENABLED?186:250);
+    if(CARD_COUNTER_ENABLED)this.button('记牌',400,y,58,()=>this.panel('记牌器 · 公开信息',vm.counter.map(item=>item.label+'：'+item.count).reduce<string[]>((rows,label,index)=>{if(index%5===0)rows.push(label);else rows[rows.length-1]+='      '+label;return rows;},[])),room.rules.allowCounter,false,h,12);
+    this.button('一键理牌',466,y,84,()=>{this.groups=arrangeHand(room.hand,room.currentLevel,room.rules);this.selected=[];this.draw();},room.hand.length>0,true,h,13);
+    this.button('组合',556,y,56,()=>{try{this.groups=manualGroup(this.groups??[],room.hand,this.selected,room.currentLevel,room.rules);this.selected=[];this.draw();}catch(error){this.error(error);}},this.selected.length>0,false,h,13);
+    this.button('还原',618,y,56,()=>{this.groups=null;this.selected=[];this.draw();},room.hand.length>0,false,h,13);
+    this.button(vm.tribute?'交换进度':vm.me.autoPlay?'取消托管':'托管',680,y,78,()=>vm.tribute?this.panel('贡还贡',vm.exchanges.map(exchange=>exchange.fromName+' → '+exchange.toName+'：'+exchange.label)):this.act({type:'auto',enabled:!vm.me.autoPlay}),vm.tribute||online&&room.rules.allowAutoPlay,false,h,12);
     const straightFlushes=new Map<string,{rank:number;ids:string[]}>();
     for(const play of findHints(room.hand,null,room.currentLevel,room.rules).filter(item=>item.type==='straightFlush')){
       const naturals=play.cards.filter(card=>!(card.suit==='heart'&&card.rank===room.currentLevel)),suit=naturals[0]?.suit;
       if(!suit||suit==='joker'||naturals.some(card=>card.suit!==suit))continue;
       const previous=straightFlushes.get(suit);if(!previous||play.rank>previous.rank)straightFlushes.set(suit,{rank:play.rank,ids:play.cards.map(card=>card.id)});
     }
-    this.centeredText('同花顺',700,360,11,C.muted,52);
+    this.centeredText('同花顺',783,y+h/2,11,C.muted,40);
     ([
       ['spade','♠'],['heart','♥'],['club','♣'],['diamond','♦']
     ] as const).forEach(([suit,symbol],index)=>{
-      const x=758+index*44,available=straightFlushes.has(suit),red=suit==='heart'||suit==='diamond';
-      this.paint.rect(x,346,38,28,available?'#ead9b2':'#203e38',7,available?(red?C.red:C.ink):C.line);
-      this.paint.suit(symbol,x+10,351,17,available?(red?C.red:C.ink):'#71877b');
-      if(available)this.hits.push({x,y:346,w:38,h:28,run:()=>{this.groups=null;this.selected=[...straightFlushes.get(suit)!.ids];this.draw();}});
+      const x=804+index*36,available=straightFlushes.has(suit),red=suit==='heart'||suit==='diamond';
+      this.paint.rect(x,y,32,h,available?'#ead9b2':C.disabled,7,available?(red?C.red:C.ink):C.line);
+      this.paint.suit(symbol,x+8,y+7,16,available?(red?C.red:C.ink):C.disabledText);
+      // Selecting a straight flush keeps the current arrangement.
+      if(available)this.hits.push({x,y,w:32,h,run:()=>{this.selected=[...straightFlushes.get(suit)!.ids];this.draw();}});
     });
-    this.paint.line(24,376,936,376,'#54756888');
-    if(this.groups)this.paint.text(vm.selectionText,190,377,12,this.selected.length?C.gold:C.muted,400,'sans-serif',520);
-    else this.paint.text(vm.selectionText,24,510,14,this.selected.length?C.gold:C.muted,400,'sans-serif',520);
-    if(this.groups){
-      const cardsById=new Map(room.hand.map(card=>[card.id,card])),blocks:{ids:string[];group:number;single:boolean}[]=[];
-      const singles:{ids:string[];group:number}={ids:[],group:0};
-      this.groups.forEach((group,index)=>{
-        const ids=group.ids.filter(id=>cardsById.has(id));
-        if(ids.length===1){if(!singles.ids.length)singles.group=index;singles.ids.push(ids[0]);}
-        else if(ids.length)blocks.push({ids:[...ids],group:index,single:false});
+  }
+  /**
+   * The hand is centred above the tool strip; arranged groups stack upward with bombs strongest-first on the left,
+   * with tall end columns kept clear of the lower side seats.
+   */
+  private handItems(room:RoomView,vm:ReturnType<typeof tableView>,spots:ReturnType<typeof seatSpots>):HandItems{
+    const cards:HandItems['cards']=[],tags:HandItems['tags']=[];
+    if(!this.groups){
+      const views=vm.rows.flatMap(row=>row.cards),layout=handLayout(views.length);
+      views.forEach((view,index)=>cards.push({view,id:view.id,x:layout.left+index*layout.step,y:layout.top-(view.selected?18:0),w:layout.width,h:layout.height,index:'column'}));
+      return {cards,tags};
+    }
+    const cardsById=new Map(room.hand.map(card=>[card.id,card])),blocks:{ids:string[];tag:string|null;single:boolean}[]=[],singles:string[]=[];
+    for(const group of displayGroups(this.groups,room.rules)){
+      const ids=group.ids.filter(id=>cardsById.has(id));
+      if(ids.length===1)singles.push(ids[0]);else if(ids.length)blocks.push({ids,tag:ids.length===group.ids.length?groupTag(group):null,single:false});
+    }
+    if(singles.length)blocks.push({ids:singles,tag:null,single:true});
+    const seat=spots[5],side={x:seat.cx+SIDE_SEAT_HALF+8,y:seat.y+seat.size+36};
+    const layout=stackLayout(blocks.map(block=>({count:block.ids.length,single:block.single,ranks:block.ids.map(id=>cardsById.get(id)!.rank)})),side);
+    blocks.forEach((block,b)=>{
+      block.ids.forEach((id,i)=>{
+        const view=cardView(cardsById.get(id)!,room.currentLevel,this.selected);
+        cards.push({view,id,x:layout.cards[b][i].x,y:layout.cards[b][i].y-(view.selected?15:0),w:STACK.width,h:STACK.height,index:block.single?'column':'row'});
       });
-      if(singles.ids.length)blocks.push({...singles,single:true});
-      let x=27;const y=386;
-      for(const block of blocks){
-        const cardW=54,cardH=58,verticalStep=22,cardsPerColumn=5,columnStep=58;
-        const width=block.single?cardW+Math.max(0,block.ids.length-1)*24:cardW+Math.max(0,Math.ceil(block.ids.length/cardsPerColumn)-1)*columnStep;
-        block.ids.forEach((id,index)=>{
-          const card=cardsById.get(id)!,view=cardView(card,room.currentLevel,this.selected);
-          const cardX=x+(block.single?index*24:Math.floor(index/cardsPerColumn)*columnStep),cardY=y+(block.single?0:index%cardsPerColumn*verticalStep)-(view.selected?10:0);
-          this.card(view,cardX,cardY,cardW,cardH);this.hits.push({x:cardX,y:cardY,w:cardW,h:cardH,card:id,run:()=>{}});
-          if(!block.single){this.box(cardX+1,cardY+cardH-4,cardW-2,3,block.group%2?C.blue:C.gold);if(index===0)this.text(String(block.group+1),cardX+4,cardY+cardH-12,9,C.bg);}
-        });
-        x+=width+(block.single?0:9);
-      }
-    }else{
-      const cards=vm.rows.flatMap(row=>row.cards),layout=handLayout(cards.length);
-      cards.forEach((card,index)=>{const x=layout.left+index*layout.step,y=layout.top-(card.selected?12:0);this.card(card,x,y,layout.width,layout.height);this.hits.push({x,y,w:layout.width,h:layout.height,card:card.id,run:()=>{} });});
-    }
-    if(vm.ended){
-      this.hits=[];this.paint.scrim();this.paint.paperPanel(215,102,530,364);this.paper=true;this.text((room.settlement?.winner??'')+' 队获胜 · 升 '+room.settlement?.upgrade+' 级',245,139,28,C.ink);
-      vm.ranking.forEach((entry,index)=>this.text(entry.place+'   '+entry.name.slice(0,12)+'   '+entry.team+' 队',250,184+index*32,18));
-      this.button(room.status==='finished'?'整场结束':`下一局 · 打 ${room.settlement?.toLevel??room.currentLevel}`,245,408,220,()=>this.act({type:'next'}),online&&vm.host&&room.status==='settlement',true);
-      this.button('返回大厅',487,408,220,()=>this.leave());
-    }
+      const tag=layout.tags[b];
+      if(block.tag&&tag)tags.push({label:block.tag,right:tag.right,bottom:tag.bottom-(this.selected.includes(block.ids[block.ids.length-1])?15:0)});
+    });
+    return {cards,tags};
   }
-  private drawActionBar(vm:ReturnType<typeof tableView>,online:boolean,seconds:string){
-    const x0=this.actionBar.x+28,y=this.actionBar.y,h=40;let x=x0;
-    this.paint.rect(this.actionBar.x,y,474,h,'#0c302b',13,'#56806b');
-    for(const dot of [0,1,2]){this.paint.ellipse(this.actionBar.x+9,y+13+dot*7,1.5,1.5,'#a6bfb0');this.paint.ellipse(this.actionBar.x+17,y+13+dot*7,1.5,1.5,'#a6bfb0');}
-    const room=this.room!;
-    const segment=(label:string,width:number,fill:string,enabled:boolean,run?:()=>void)=>{
-      this.paint.rect(x,y+4,width,h-8,fill,8,enabled?'#ffffff25':'#ffffff0a');
-      this.centeredText(label,x+width/2,y+h/2,12,enabled?C.text:'#7e9387',width-10);
-      if(enabled&&run)this.hits.push({x,y,w:width,h,run});x+=width+4;
-    };
-    const turn=room.status==='tribute'?'贡还贡':vm.me.autoPlay?'托管中':vm.mine?'轮到你':vm.turnLabel;
-    segment(turn,130,'#17483c',false);
-    segment('提示',70,'#356a81',online&&vm.mine,()=>this.hint());
-    segment('不出',70,'#82513b',online&&vm.canPass,()=>this.act({type:'pass'}));
-    if(room.status==='tribute')segment(vm.tributeLabel,76,'#3e7751',online&&vm.canTribute,()=>this.act(room.tribute.some(item=>item.from===room.mySeat&&!item.given)?{type:'tribute'}:{type:'tribute',cardId:this.selected[0]}));
-    else segment('出牌',76,'#397b53',online&&vm.canPlay,()=>this.act({type:'play',cardIds:[...this.selected]}));
-    segment(seconds,80,'#17382f',false);
+  private drawHand(hand:HandItems){
+    for(const card of hand.cards){this.card(card.view,card.x,card.y,card.w,card.h,card.index);this.hits.push({x:card.x,y:card.y,w:card.w,h:card.h,card:card.id,run:()=>{}});}
+    for(const tag of hand.tags)this.paint.tag(tag.label,tag.right,tag.bottom);
   }
-  private card(c:{label:string;symbol:string;red:boolean;wild:boolean;selected?:boolean},x:number,y:number,w:number,h:number){
-    this.paint.card(c,x,y,w,h);
+  private card(c:CardFace,x:number,y:number,w:number,h:number,index?:'row'|'column'){
+    this.paint.card(c,x,y,w,h,index);
   }
   private drawPanel(){const p=this.overlay!;this.hits=[];this.paint.scrim();this.paint.paperPanel(105,64,750,430);this.paper=true;this.text(p.title,132,99,27,C.ink);
     const lines:string[]=[];for(const line of p.lines){let part='';for(const ch of line){this.ctx.font='18px sans-serif';if(this.ctx.measureText(part+ch).width>685){lines.push(part);part=ch;}else part+=ch;}lines.push(part);}

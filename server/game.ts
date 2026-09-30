@@ -50,7 +50,7 @@ export function createRoom(roomId: string, hostId: string, nickname: string, rul
     roomId, hostId, mode, players: [], rules: validatedRules(rules), status: 'waiting', round: 0,
     currentLevel: '2', teamLevels: { A: '2', B: '2' }, currentTurnSeat: 1,
     lastPlay: null, lastPlaySeat: null, passSeats: [], finishOrder: [], tribute: [], tributeResisted: false,
-    settlement: null, deadline: null, revision: 0, messages: [], totalPlays: 0, biggestBomb: 0, roundBomb: 0, playedCounts: {}, matchStats: createMatchStats(), createdAt: Date.now(),
+    settlement: null, deadline: null, revision: 0, messages: [], aceFailures: { A: 0, B: 0 }, totalPlays: 0, biggestBomb: 0, roundBomb: 0, playedCounts: {}, matchStats: createMatchStats(), createdAt: Date.now(),
   };
   addPlayer(state, hostId, nickname);
   return state;
@@ -97,11 +97,31 @@ function scheduleDeadline(state: GameState, now: number) {
   state.deadline = automatic ? now + BOT_DELAY : state.rules.turnSeconds ? now + state.rules.turnSeconds * 1000 : null;
 }
 
-function makeTribute(state: GameState, order: number[], winner: Team, count: number) {
-  count = Math.min(count,3);
-  // Choose opposing players by their actual finish order: fixed ranks 5/6 can contain a winner.
-  const donors = order.filter(seat => playerAt(state,seat).team !== winner).reverse().slice(0,count);
-  const recipients = order.filter(seat => playerAt(state,seat).team === winner).slice(0,count);
+function trailingOpponents(state: GameState, order: number[], winner: Team): number {
+  let count = 0;
+  for (const seat of [...order].reverse()) { if (playerAt(state,seat).team === winner) break; count++; }
+  return count;
+}
+
+function makeTribute(state: GameState, order: number[], winner: Team, upgrade: number) {
+  let donors: number[], recipients: number[];
+  const trailing = trailingOpponents(state,order,winner);
+  if (state.rules.ruleVersion === '6P_V1') {
+    const count = Math.min(upgrade,3);
+    // Choose opposing players by their actual finish order: fixed ranks 5/6 can contain a winner.
+    donors = order.filter(seat => playerAt(state,seat).team !== winner).reverse().slice(0,count);
+    recipients = order.filter(seat => playerAt(state,seat).team === winner).slice(0,count);
+  } else if (trailing) {
+    // 3 / 2 / 1 opponents at the tail tribute; the largest card goes to 头游, the next to the next-placed winner.
+    const best = (seat: number) => cardStrength(tributeCandidates(playerAt(state,seat),state.currentLevel)[0],state.currentLevel);
+    donors = order.slice(order.length - trailing).reverse().sort((a,b) => best(b) - best(a));
+    recipients = order.filter(seat => playerAt(state,seat).team === winner).slice(0,trailing);
+  } else {
+    // A winning-team 末游 tributes to its own 头游.
+    donors = [order[order.length - 1]];
+    recipients = [order[0]];
+  }
+  const count = donors.length;
   state.tribute = donors.map((from,i) => ({ from, to: recipients[i], given: false, returned: false }));
   const opposing = state.players.filter(p => p.team !== winner);
   const kings = (p: Player) => p.hand.filter(c => c.rank === 'BJ').length;
@@ -116,7 +136,8 @@ function makeTribute(state: GameState, order: number[], winner: Team, count: num
   } else {
     state.currentTurnSeat = donors[0];
     state.status = 'tribute';
-    note(state, `进入${count === 3 ? '三' : count === 2 ? '双' : '单'}贡阶段，请贡方确认最大非逢人配牌`);
+    const own = playerAt(state,donors[0]).team === winner;
+    note(state, own ? '末游与头游同队，由末游向本队头游进贡' : `进入${count === 3 ? '三' : count === 2 ? '双' : '单'}贡阶段，请贡方确认最大非逢人配牌`);
   }
 }
 
@@ -152,23 +173,46 @@ function settleRound(state: GameState) {
   const order = [...state.finishOrder];
   const winner = playerAt(state,order[0]).team;
   const sweep = order.slice(0,3).every(seat => playerAt(state,seat).team === winner);
-  let trailingOpponents = 0;
-  for (const seat of [...order].reverse()) { if (playerAt(state,seat).team === winner) break; trailingOpponents++; }
-  const upgrade = state.rules.ruleVersion === '6P_V2' ? trailingOpponents + 1 : sweep ? 3 : playerAt(state,order[1]).team === winner ? 2 : 1;
+  const trailing = trailingOpponents(state,order,winner);
+  const upgrade = state.rules.ruleVersion === '6P_V2' ? trailing + 1 : sweep ? 3 : playerAt(state,order[1]).team === winner ? 2 : 1;
   const fromLevel = state.teamLevels[winner];
   const toLevel = LEVELS[Math.min(LEVELS.indexOf(fromLevel) + upgrade,LEVELS.length - 1)];
+  // 闯关: a team at A in an A round must take 头游 with an opponent as 末游. Any other result is a failed attempt.
+  const attempting = (team: Team) => state.rules.mustBeatAce && state.currentLevel === 'A' && state.teamLevels[team] === 'A';
+  const aceWon = state.rules.mustBeatAce ? attempting(winner) && trailing > 0 : toLevel === 'A';
+  const failedTeams = aceWon ? [] : (['A','B'] as Team[]).filter(attempting);
   state.teamLevels[winner] = toLevel;
-  const aceWon = state.rules.mustBeatAce ? fromLevel === 'A' && state.currentLevel === 'A' : toLevel === 'A';
+  const ace = failedTeams.map(team => {
+    const count = ++state.aceFailures[team];
+    // The third failure sends the team back to 2 to climb again.
+    if (count >= 3) { state.teamLevels[team] = '2'; state.aceFailures[team] = 0; }
+    return { team, count, reset: count >= 3 };
+  });
   const matchOver = state.rules.rounds === 'A' ? aceWon : state.round >= state.rules.rounds;
-  const reason = matchOver ? state.rules.rounds === 'A' ? state.rules.mustBeatAce ? '成功打过 A，整场结束' : '升级到 A，整场结束' : `已完成约定的 ${state.rules.rounds} 局` : `${winner === 'A' ? '蓝' : '橙'}队升级 ${upgrade} 级`;
-  state.settlement = { order, winner, upgrade, fromLevel, toLevel, sweep, matchOver, reason, biggestBomb: state.roundBomb };
+  const teamName = (team: Team) => team === 'A' ? '蓝' : '橙';
+  const aceNotes = ace.map(item => item.reset ? `${teamName(item.team)}队闯关失败 3 次，退回打 2` : `${teamName(item.team)}队闯关失败第 ${item.count} 次`);
+  const reason = matchOver ? state.rules.rounds === 'A' ? state.rules.mustBeatAce ? '成功打过 A，整场结束' : '升级到 A，整场结束' : `已完成约定的 ${state.rules.rounds} 局` : [...aceNotes,`${teamName(winner)}队升级 ${upgrade} 级`].join('；');
+  state.settlement = { order, winner, upgrade, fromLevel, toLevel: state.teamLevels[winner], sweep, matchOver, reason, biggestBomb: state.roundBomb, ...(ace.length ? { ace } : {}) };
   const champion = playerAt(state,order[0]);
   state.matchStats.rounds = state.round;
   state.matchStats.firsts[champion.userId] = (state.matchStats.firsts[champion.userId] ?? 0) + 1;
   if (sweep) state.matchStats.sweeps[winner] = (state.matchStats.sweeps[winner] ?? 0) + 1;
   state.status = matchOver ? 'finished' : 'settlement';
   state.deadline = null;
-  note(state, `${winner === 'A' ? '蓝' : '橙'}队获得头游，${fromLevel} → ${toLevel}。${reason}`);
+  note(state, `${teamName(winner)}队获得头游，${fromLevel} → ${state.teamLevels[winner]}。${reason}`);
+}
+
+/**
+ * Once everyone still holding cards is on one team, further play cannot change the team result:
+ * rank them by cards left, most cards last (末游, then 五游, then 四游). Ties keep turn order.
+ */
+function rankRemaining(state: GameState, after: number): boolean {
+  const remaining = activeClockwise(state,after);
+  if (remaining.some(p => p.team !== remaining[0].team)) return false;
+  const byCards = [...remaining].sort((a,b) => a.hand.length - b.hand.length);
+  for (const p of byCards) { state.finishOrder.push(p.seat); p.finishRank = state.finishOrder.length; }
+  if (byCards.length > 1) note(state, `剩余 ${byCards.length} 位玩家同队，按剩牌数定名次，本局结束`);
+  return true;
 }
 
 function afterPlay(state: GameState, player: Player, now: number) {
@@ -176,8 +220,8 @@ function afterPlay(state: GameState, player: Player, now: number) {
     state.finishOrder.push(player.seat);
     player.finishRank = state.finishOrder.length;
     note(state, `${player.nickname} 第 ${player.finishRank} 名出完`);
+    if (rankRemaining(state,player.seat)) { settleRound(state); return; }
   }
-  if (state.finishOrder.length === 5) { settleRound(state); return; }
   state.currentTurnSeat = activeClockwise(state,player.seat)[0].seat;
   scheduleDeadline(state,now);
 }

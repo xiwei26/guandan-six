@@ -37,6 +37,7 @@ export function createApplication(options: Options = {}) {
       room.rules = {...DEFAULT_RULES,...room.rules};
       if (typeof room.roundBomb !== 'number') room.roundBomb = 0;
       if (!room.playedCounts) room.playedCounts = {};
+      if (!room.aceFailures) room.aceFailures = { A: 0, B: 0 };
       rooms.set(room.roomId,room);
     });
     saved.sessions.forEach(([tokenHash,session]) => sessions.set(tokenHash,session));

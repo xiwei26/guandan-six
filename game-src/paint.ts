@@ -3,7 +3,20 @@ export const COLORS = {
   bg:'#0b302b', felt:'#164c40', panel:'#19473e', line:'#386154',
   text:'#f7f1e2', muted:'#a6bfb0', gold:'#e7c789', blue:'#55b7d1', orange:'#ee8958',
   paper:'#f8f3e7', ink:'#183c32', soft:'#eae6d9', paperMuted:'#677a6a', red:'#b74a40',
+  feltCenter:'#1b5a4b', feltEdge:'#08251f', sheen:'150,222,190', disabled:'#203e38', disabledText:'#80968b', scrim:'#041c18b8',
 };
+type Palette = Pick<typeof COLORS,'bg'|'felt'|'panel'|'line'|'muted'|'feltCenter'|'feltEdge'|'sheen'|'disabled'|'disabledText'|'scrim'>;
+export type ThemeName = 'green'|'blue'|'navy';
+export const THEMES: Record<ThemeName,{label:string}&Palette> = {
+  green:{label:'松绿',bg:'#0b302b',felt:'#164c40',panel:'#19473e',line:'#386154',muted:'#a6bfb0',feltCenter:'#1b5a4b',feltEdge:'#08251f',sheen:'150,222,190',
+    disabled:'#203e38',disabledText:'#80968b',scrim:'#041c18b8'},
+  blue:{label:'深蓝',bg:'#0a1f3b',felt:'#17457a',panel:'#173d68',line:'#35608f',muted:'#a8bdd8',feltCenter:'#1e538f',feltEdge:'#071731',sheen:'140,196,255',
+    disabled:'#18335a',disabledText:'#7d95b6',scrim:'#030c1cb8'},
+  navy:{label:'藏青',bg:'#111a30',felt:'#243357',panel:'#223157',line:'#44567f',muted:'#afb9d0',feltCenter:'#2c3d66',feltEdge:'#0b1224',sheen:'182,196,240',
+    disabled:'#1d2946',disabledText:'#828fad',scrim:'#060a17b8'},
+};
+export function applyTheme(name:ThemeName) {Object.assign(COLORS,THEMES[name]);}
+export type CardFace = {label:string;symbol:string;red:boolean;wild:boolean;selected?:boolean};
 
 export class Painter {
   private bounds={x:0,y:0,w:960,h:540};
@@ -20,13 +33,44 @@ export class Painter {
     c.fillText(label,x,y);c.restore();
   }
 
-  rect(x:number,y:number,w:number,h:number,fill:string,radius=10,stroke?:string) {
-    const c=this.ctx,r=Math.min(radius,w/2,h/2);c.save();c.beginPath();
+  private roundPath(x:number,y:number,w:number,h:number,radius:number) {
+    const c=this.ctx,r=Math.min(radius,w/2,h/2);c.beginPath();
     c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.quadraticCurveTo(x+w,y,x+w,y+r);
     c.lineTo(x+w,y+h-r);c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
     c.lineTo(x+r,y+h);c.quadraticCurveTo(x,y+h,x,y+h-r);
     c.lineTo(x,y+r);c.quadraticCurveTo(x,y,x+r,y);c.closePath();
+  }
+
+  rect(x:number,y:number,w:number,h:number,fill:string,radius=10,stroke?:string) {
+    const c=this.ctx;c.save();this.roundPath(x,y,w,h,radius);
     c.fillStyle=fill;c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=1;c.stroke();}c.restore();
+  }
+
+  /** Turn action button with a soft white halo and a white gradient rim. `colors` runs top to bottom. */
+  actionButton(label:string,x:number,y:number,w:number,h:number,colors:[string,string],enabled:boolean) {
+    const c=this.ctx,radius=h*.3;c.save();
+    if(enabled){c.shadowColor='rgba(255,255,255,.55)';c.shadowBlur=16;}
+    const fill=c.createLinearGradient(x,y,x,y+h);
+    fill.addColorStop(0,enabled?colors[0]:'#6d777c');fill.addColorStop(1,enabled?colors[1]:'#434c51');
+    this.roundPath(x,y,w,h,radius);c.fillStyle=fill;c.fill();c.restore();
+    c.save();const rim=c.createLinearGradient(x,y,x,y+h);
+    rim.addColorStop(0,`rgba(255,255,255,${enabled?.95:.45})`);rim.addColorStop(.55,'rgba(255,255,255,.18)');rim.addColorStop(1,`rgba(255,255,255,${enabled?.7:.3})`);
+    this.roundPath(x+1,y+1,w-2,h-2,radius-1);c.strokeStyle=rim;c.lineWidth=2;c.stroke();
+    c.fillStyle=enabled?'#fffaf0':'#b9c0c3';c.font=`600 ${Math.round(h*.375)}px sans-serif`;c.textAlign='center';c.textBaseline='middle';
+    if(enabled){c.shadowColor='rgba(0,0,0,.35)';c.shadowBlur=3;c.shadowOffsetY=1;}
+    c.fillText(label,x+w/2,y+h/2+1);c.restore();
+  }
+
+  /** Alarm clock showing the turn countdown inside its face; turns red for the final seconds. */
+  alarmClock(cx:number,cy:number,size:number,label:string,urgent:boolean) {
+    const c=this.ctx,r=size*.36,ring=urgent?COLORS.red:'#e3ac3f';c.save();
+    c.shadowColor='rgba(255,255,255,.45)';c.shadowBlur=12;
+    c.fillStyle=ring;for(const side of [-1,1]){c.beginPath();c.arc(cx+side*r*.78,cy-r*.86,r*.4,Math.PI,Math.PI*2);c.closePath();c.fill();}
+    c.strokeStyle=ring;c.lineWidth=size*.05;c.lineCap='round';
+    for(const side of [-1,1]){c.beginPath();c.moveTo(cx+side*r*.55,cy+r*.8);c.lineTo(cx+side*r*.85,cy+r*1.18);c.stroke();}
+    c.beginPath();c.arc(cx,cy,r,0,Math.PI*2);c.fillStyle='#fff8ea';c.fill();c.lineWidth=size*.07;c.stroke();c.restore();
+    c.save();c.fillStyle=urgent?COLORS.red:COLORS.ink;c.font=`700 ${Math.round(size*.375)}px sans-serif`;c.textAlign='center';c.textBaseline='middle';
+    c.fillText(label,cx,cy+1,r*1.7);c.restore();
   }
 
   line(x:number,y:number,x2:number,y2:number,color:string=COLORS.line) {
@@ -80,14 +124,43 @@ export class Painter {
     c.restore();
   }
 
-  backdrop(x=0,y=0,w=960,h=540) {
-    this.bounds={x,y,w,h};
-    const c=this.ctx;c.save();
-    const wash=c.createLinearGradient(x,y,x+w,y+h);wash.addColorStop(0,'#17493d');wash.addColorStop(.55,'#103a32');wash.addColorStop(1,COLORS.bg);
-    c.fillStyle=wash;c.fillRect(x,y,w,h);c.restore();
+  /** Jester head for jokers: red and gold for the big joker, ink and silver for the small one. */
+  jester(x:number,y:number,size:number,big:boolean) {
+    const c=this.ctx,main=big?'#c8412f':'#26323b',accent=big?'#e3ac3f':'#9eabb3',face='#fff8ea',ink='#2b211c';
+    c.save();c.translate(x,y);c.scale(size,size);c.lineJoin='round';c.beginPath();
+    c.moveTo(.2,.52);c.bezierCurveTo(.16,.38,.1,.3,.04,.31);c.bezierCurveTo(.16,.17,.3,.22,.36,.36);
+    c.bezierCurveTo(.36,.2,.42,.09,.5,.04);c.bezierCurveTo(.58,.09,.64,.2,.64,.36);
+    c.bezierCurveTo(.7,.22,.84,.17,.96,.31);c.bezierCurveTo(.9,.3,.84,.38,.8,.52);c.closePath();
+    c.fillStyle=main;c.fill();
+    c.fillStyle=accent;for(const [bx,by] of [[.05,.31],[.5,.05],[.95,.31]]){c.beginPath();c.arc(bx,by,.06,0,Math.PI*2);c.fill();}
+    c.beginPath();c.moveTo(.24,.88);
+    for(let i=0;i<=8;i++)c.lineTo(.24+i*.065,i%2?.99:.87);
+    c.closePath();c.fill();
+    c.beginPath();c.arc(.5,.66,.22,0,Math.PI*2);c.fillStyle=face;c.fill();c.lineWidth=.035;c.strokeStyle=main;c.stroke();
+    c.beginPath();c.moveTo(.27,.5);c.quadraticCurveTo(.5,.4,.73,.5);c.lineTo(.72,.55);c.quadraticCurveTo(.5,.47,.28,.55);c.closePath();c.fillStyle=accent;c.fill();
+    c.fillStyle=ink;for(const ex of [.42,.58]){c.beginPath();c.arc(ex,.64,.028,0,Math.PI*2);c.fill();}
+    c.beginPath();c.arc(.5,.71,.038,0,Math.PI*2);c.fillStyle='#d9543f';c.fill();
+    c.beginPath();c.arc(.5,.7,.11,Math.PI*.18,Math.PI*.82);c.lineWidth=.03;c.strokeStyle=ink;c.stroke();
+    c.restore();
   }
 
-  scrim() {const c=this.ctx,b=this.bounds;c.save();c.fillStyle='#041c18b8';c.fillRect(b.x,b.y,b.w,b.h);c.restore();}
+  /** Full-screen felt: lit center, darker edges and a soft sheen along every side. No center disc. */
+  backdrop(x=0,y=0,w=960,h=540) {
+    this.bounds={x,y,w,h};
+    const c=this.ctx,cx=x+w/2,cy=y+h*.42;c.save();
+    const felt=c.createRadialGradient(cx,cy,0,cx,cy,Math.hypot(w,h)*.62);
+    felt.addColorStop(0,COLORS.feltCenter);felt.addColorStop(.5,COLORS.felt);felt.addColorStop(1,COLORS.feltEdge);
+    c.fillStyle=felt;c.fillRect(x,y,w,h);
+    const band=Math.min(w,h)*.2,glow=COLORS.sheen;
+    for(const [x0,y0,x1,y1,alpha] of [[x,y,x,y+band,.2],[x,y+h,x,y+h-band,.14],[x,y,x+band,y,.16],[x+w,y,x+w-band,y,.16]] as const){
+      const sheen=c.createLinearGradient(x0,y0,x1,y1);sheen.addColorStop(0,`rgba(${glow},${alpha})`);sheen.addColorStop(.35,`rgba(${glow},${alpha*.35})`);sheen.addColorStop(1,`rgba(${glow},0)`);
+      c.fillStyle=sheen;c.fillRect(x,y,w,h);
+    }
+    c.restore();
+    this.rect(x+5,y+5,w-10,h-10,'transparent',22,`rgba(${glow},.22)`);
+  }
+
+  scrim() {const c=this.ctx,b=this.bounds;c.save();c.fillStyle=COLORS.scrim;c.fillRect(b.x,b.y,b.w,b.h);c.restore();}
 
   paperPanel(x:number,y:number,w:number,h:number) {
     const c=this.ctx;c.save();c.shadowColor='#00181055';c.shadowBlur=30;c.shadowOffsetY=10;
@@ -95,51 +168,74 @@ export class Painter {
     this.rect(x+7,y+7,w-14,h-14,'transparent',12,'#d5d9c866');
   }
 
-  table(expanded=false) {
-    const y=expanded?284:198,rx=expanded?334:294,ry=expanded?166:110;
-    this.ellipse(480,y+7,rx+8,ry+7,'#082b25');
-    this.ellipse(480,y+2,rx+6,ry+6,'#486954');
-    this.ellipse(480,y,rx,ry,COLORS.felt,'#7b8960');
-    this.ellipse(480,y,rx-15,ry-14,'transparent','#70907455');
-    this.text('六 人 掼 蛋',422,expanded?369:263,16,'#66907b',400,'serif');
+  /** Pattern name in the bottom-right corner of an arranged group: half-transparent blue text in a matching frame. */
+  tag(label:string,right:number,bottom:number) {
+    const c=this.ctx,color='#1d5fd0';c.save();c.font='600 12px sans-serif';
+    const w=c.measureText(label).width+10,h=18,x=right-w,y=bottom-h;
+    c.globalAlpha=.5;this.rect(x,y,w,h,'transparent',5,color);this.text(label,x+5,y+h/2+.5,12,color,600);c.restore();
   }
 
-  card(c:{label:string;symbol:string;red:boolean;wild:boolean;selected?:boolean},x:number,y:number,w:number,h:number) {
-    const ink=c.red?COLORS.red:COLORS.ink,large=h>80,compact=w>=48&&w<=64&&h<=64,ctx=this.ctx;
+  /** Rank index; `fit` squeezes wide labels such as "10" into the visible strip of an overlapped card. */
+  private rank(label:string,x:number,y:number,size:number,color:string,fit=Infinity) {
+    const c=this.ctx;c.save();c.fillStyle=color;c.textBaseline='middle';c.textAlign='left';c.font=`600 ${size}px Georgia, serif`;
+    const width=c.measureText(label).width;if(width>fit)c.fillText(label,x,y,fit);else c.fillText(label,x,y);c.restore();
+    return Math.min(width,fit);
+  }
+
+  /**
+   * `row` puts rank and suit side by side for vertically stacked cards;
+   * `column` stacks them in the left strip for horizontally fanned cards.
+   */
+  card(c:CardFace,x:number,y:number,w:number,h:number,index?:'row'|'column') {
+    const ink=c.red?COLORS.red:COLORS.ink,joker=c.label==='大'||c.label==='小',big=c.label==='大',ctx=this.ctx;
+    const style=index??(w>=48&&w<=64&&h<=64?'row':'column');
     ctx.save();ctx.shadowColor='#001e2440';ctx.shadowBlur=4;ctx.shadowOffsetY=2;
     this.rect(x,y,w,h,c.selected?'#ffedbf':'#fffcf4',6,c.selected?COLORS.gold:'#c5c9bb');ctx.restore();
     if(c.selected)this.rect(x+2,y+2,w-4,h-4,'transparent',4,'#c49a4f');
-    if(compact) {
-      if(c.label==='大'||c.label==='小')this.text(c.label+'王',x+4,y+12,13,ink,600,'sans-serif',w-8);
-      else {
-        this.text(c.label,x+4,y+12,c.label==='10'?14:17,ink,600,'Georgia, serif');
-        this.suit(c.symbol,x+(c.label==='10'?28:21),y+5,14,ink);
+    const badge=(bx:number,by:number,size:number)=>{this.rect(bx,by,size,size+1,'#ead19b',3);this.text('配',bx+size*.15,by+size*.55,size*.66,'#725320',600);};
+    if(style==='row') {
+      const stacked=h>80,rankSize=stacked?25:17,top=stacked?19:12;
+      if(joker) {
+        this.text(c.label+'王',x+(stacked?6:4),y+top,stacked?16:13,ink,600,'sans-serif');
+        if(stacked){this.jester(x+44,y+3,28,big);this.jester(x+4,y+h-37,31,big);}
+        else this.jester(x+w/2-16,y+h-36,32,big);
+      } else {
+        const rankWidth=this.rank(c.label,x+(stacked?6:4),y+top,c.label==='10'?rankSize-3:rankSize,ink);
+        this.suit(c.symbol,x+(stacked?6:4)+rankWidth+(stacked?3:2),y+(stacked?8:5),stacked?19:14,ink);
+        // Below the next card's edge in a stack, and clear of the pattern tag in the bottom-right corner.
+        if(stacked)this.suit(c.symbol,x+8,y+h-38,28,ink);
       }
-      if(c.wild){this.rect(x+w-16,y+3,13,16,'#ead19b',3);this.text('配',x+w-14,y+11,9,'#725320',600);}
-    } else if(c.label==='大'||c.label==='小') {
-      const step=Math.min(16,(h-12)/5);
-      [...'JOKER'].forEach((letter,i)=>this.text(letter,x+5,y+11+i*step,Math.min(19,step+2),ink,600,'Georgia, serif'));
-      if(large)this.suit('✦',x+w-45,y+h-50,34,ink);
-    } else {
-      this.text(c.label,x+5,y+(large?19:14),large?(c.label==='10'?23:28):20,ink,600,'Georgia, serif');
-      this.suit(c.symbol,x+5,y+(large?33:26),large?20:15,ink);
-      if(large)this.suit(c.symbol,x+w-44,y+h-51,34,ink);
+      if(c.wild)badge(x+w-(stacked?20:16),y+3,stacked?16:13);
+      return;
     }
-    if(c.wild&&!compact){this.rect(x+3,y+h-29,20,18,'#ead19b',4);this.text('配',x+7,y+h-20,11,'#725320',600);}
+    const wide=w>=100,mid=w>=70&&!wide,large=h>80;
+    const rankSize=wide?28:mid?22:large?28:20,suitSize=wide?22:mid?16:large?20:15,left=x+(wide?6:5);
+    const rankY=y+(wide?21:mid?16:large?19:14),suitY=y+(wide?38:mid?29:large?33:26);
+    if(joker) {
+      const icon=wide?26:mid?24:large?24:20;this.jester(x+(wide?3:2),y+3,icon,big);
+      [...(c.label+'王')].forEach((letter,i)=>this.text(letter,left+(wide?1:0),y+icon+(wide?16:12)+i*(wide?21:mid?16:14),wide?19:mid?15:13,ink,600));
+      if(large){const art=wide?Math.min(w*.56,80):mid?42:w*.5;this.jester(x+w-art-(wide?8:4),y+h-art-(wide?10:4),art,big);}
+    } else {
+      // Fanned hands can overlap to about a 30px strip (24px for the viewer's own played cards).
+      this.rank(c.label,x+5,rankY,c.label==='10'?rankSize-3:rankSize,ink,wide?24:mid?30:large?26:19);
+      this.suit(c.symbol,left,suitY,suitSize,ink);
+      if(large){const pip=wide?46:mid?30:34;this.suit(c.symbol,x+w-pip-(wide?12:8),y+h-pip-(wide?16:10),pip,ink);}
+    }
+    if(c.wild){const size=wide?22:mid?17:large?18:15;badge(x+3,y+h-size-(wide?12:8),size);}
   }
 
   lobbyArt() {
-    this.ellipse(270,317,184,87,'#0c302966','#72947d33');
-    this.ellipse(270,317,164,72,'transparent','#72947d22');
+    this.ellipse(270,317,184,87,COLORS.bg+'66',COLORS.line+'55');
+    this.ellipse(270,317,164,72,'transparent',COLORS.line+'38');
     const ctx=this.ctx;
     for(const [index,angle] of [-.25,0,.25].entries()) {
       ctx.save();ctx.translate(197+index*64,300-Math.abs(index-1)*4);ctx.rotate(angle);
       if(index===1) {
         ctx.shadowColor='#00190f50';ctx.shadowBlur=16;ctx.shadowOffsetY=8;
         this.rect(-52,-74,104,148,COLORS.paper,9);ctx.shadowColor='transparent';
-        this.rect(-47,-69,94,138,'#245344',6);this.rect(-40,-62,80,124,'transparent',3,'#acb58a');
-        this.rect(-35,-57,70,114,'transparent',2,'#82986b');
-        this.suit('♣',-22,-30,44,'#d4d5ac');this.text('六人掼蛋',-28,33,14,'#e4dfbb',500,'serif');
+        this.rect(-47,-69,94,138,COLORS.panel,6);this.rect(-40,-62,80,124,'transparent',3,'#c4b88a');
+        this.rect(-35,-57,70,114,'transparent',2,'#988f6c');
+        this.suit('♣',-22,-30,44,'#d8d0aa');this.text('六人掼蛋',-28,33,14,'#e4dfbb',500,'serif');
       } else this.card({label:'A',symbol:index?'♠':'♥',red:!index,wild:false},-52,-74,104,148);
       ctx.restore();
     }

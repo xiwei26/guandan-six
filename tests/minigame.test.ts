@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {build} from 'esbuild';
-import {viewport,hitAt,handLayout,lobbySpread} from '../game-src/layout';
+import {viewport,hitAt,handLayout,lobbySpread,seatBounds,seatSpots,stackLayout,tableEdge,STACK,HAND_BOTTOM,TOP_SEAT_CX,SIDE_SEAT_HALF} from '../game-src/layout';
 import {createRoom,addPlayer,applyAction,getRoomView} from '../server/game';
 import {createDeck,findHints} from '../shared/cards';
 import {handRows,validReturnCards} from '../miniprogram/utils/presentation';
@@ -29,7 +29,7 @@ function harness(loggedIn=false,screen={windowWidth:960,windowHeight:540,pixelRa
   const toasts:string[]=[];
   let drawnImages:string[]=[];
   const ctx={font:'18px sans-serif',setTransform(){},save(){},restore(){},beginPath(){},closePath(){},clip(){},moveTo(){},lineTo(){},quadraticCurveTo(){},bezierCurveTo(){},fill(){},stroke(){},ellipse(){},arc(){},translate(){},rotate(){},scale(){},
-    createLinearGradient(){return {addColorStop(){}};},
+    createLinearGradient(){return {addColorStop(){}};},createRadialGradient(){return {addColorStop(){}};},
     fillRect(x:number,y:number,w:number){if(x===0&&y===0&&w===960){texts=[];drawnImages=[];}},fillText(s:string,x:number,y:number){texts.push({s,x,y});},
     drawImage(image:{src?:string}){drawnImages.push(image.src??'');},
     measureText(s:string){const size=Number(this.font.match(/([\d.]+)px/)?.[1]??18);return {width:[...s].reduce((width,c)=>width+size*(c.charCodeAt(0)>255?1:.55),0)};}};
@@ -120,7 +120,7 @@ test('game leaves a waiting room through HTTP before returning to the lobby',asy
     const h=harness(true);
     try{
       h.click('电脑局 · 1–6 位真人');await h.flush();if(online)h.publish();
-      h.click('大厅');assert.equal(h.modal()?.content,'离开将让出座位。');h.modal()?.success({confirm:true});await h.flush();
+      h.click('返回大厅');assert.equal(h.modal()?.content,'离开将让出座位。');h.modal()?.success({confirm:true});await h.flush();
       assert.equal(h.actions.at(-1)?.type,'leave');assert.equal(h.storage.has('gd6.http://127.0.0.1:3001.room'),false);
       assert.ok(h.texts().some(t=>t.s==='电脑局 · 1–6 位真人'));
     }finally{h.events.Hide();}
@@ -150,10 +150,10 @@ test('game retries HTTP failure or a lost exit response without silently abandon
     const h=harness(true);
     try{
       h.click('电脑局 · 1–6 位真人');await h.flush();h.failures[failure]=true;
-      h.click('大厅');h.modal().success({confirm:true});await h.flush();
+      h.click('返回大厅');h.modal().success({confirm:true});await h.flush();
       assert.equal(h.storage.get('gd6.http://127.0.0.1:3001.room'),h.state.roomId);
-      assert.ok(h.texts().some(t=>t.s==='大厅'));
-      h.click('大厅');h.modal().success({confirm:true});await h.flush();
+      assert.ok(h.texts().some(t=>t.s==='返回大厅'));
+      h.click('返回大厅');h.modal().success({confirm:true});await h.flush();
       assert.equal(h.storage.has('gd6.http://127.0.0.1:3001.room'),false);
       assert.ok(h.texts().some(t=>t.s==='电脑局 · 1–6 位真人'));
     }finally{h.events.Hide();}
@@ -167,7 +167,7 @@ test('game active leave explains computer replacement and preserves only friends
       h.click('电脑局 · 1–6 位真人');await h.flush();
       for(const p of h.state.players)applyAction(h.state,p.userId,{type:'ready',ready:true});
       applyAction(h.state,'p1',{type:'start'});h.publish();
-      h.click('大厅');assert.match(h.modal().content,mode==='computer'?/电脑接替/:/保留/);
+      h.click('返回大厅');assert.match(h.modal().content,mode==='computer'?/电脑接替/:/保留/);
       h.modal().success({confirm:true});await h.flush();
       assert.equal(h.storage.has('gd6.http://127.0.0.1:3001.room'),mode==='friends');
       assert.ok(h.texts().some(t=>t.s==='电脑局 · 1–6 位真人'));
@@ -188,9 +188,8 @@ test('computer room can shuffle, seat friends together and fill only vacant seat
     const friend=h.state.players.find(p=>p.userId==='p2')!;
     const target=[1,2,3,4,5,6].find(seat=>seat%2===host.seat%2&&!h.state.players.some(p=>p.seat===seat))!;
     const tapSeat=(seat:number)=>{
-      const positions=[[68,282],[870,190],[870,100],[480,50],[68,100],[68,190]];
-      const [x,y]=positions[(seat-host.seat+6)%6];
-      h.events.TouchStart({touches:[{clientX:x,clientY:y+20}]});h.events.TouchEnd();
+      const bounds=seatBounds((seat-host.seat+6)%6);
+      h.events.TouchStart({touches:[{clientX:bounds.x+bounds.w/2,clientY:bounds.y+bounds.h/2}]});h.events.TouchEnd();
     };
     h.click('调整座位');tapSeat(friend.seat);tapSeat(target);await h.flush();
     assert.equal(h.actions.at(-1)?.type,'swap');
@@ -232,11 +231,57 @@ test('arranged combinations leave every compact card header visible and on canva
   for(const p of h.state.players)applyAction(h.state,p.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});
   h.state.players[0].hand=createDeck().filter(card=>card.rank==='3');h.publish();
   h.click('一键理牌');
-  const ranks=h.texts().filter(text=>text.s==='3'&&text.y>376).sort((a,b)=>a.y-b.y);
+  const ranks=h.texts().filter(text=>text.s==='3'&&text.y>170).sort((a,b)=>a.y-b.y);
   const rows=[...new Set(ranks.map(rank=>rank.y))].sort((a,b)=>a-b);
-  assert.equal(ranks.length,12);assert.ok(rows.length>1);assert.ok(rows.slice(1).every((row,index)=>row-rows[index]>=20),'stacked cards must expose each compact header');
-  assert.ok(Math.max(...ranks.map(rank=>rank.y))<=500,'large combinations must stay inside the hand area');
+  assert.equal(ranks.length,12);assert.ok(rows.length>1);assert.ok(rows.slice(1).every((row,index)=>row-rows[index]>=STACK.step),'stacked cards must expose each header with the wider spacing');
+  assert.ok(Math.max(...ranks.map(rank=>rank.y))<HAND_BOTTOM,'large combinations must stay inside the hand area');
+  assert.ok(h.texts().some(text=>text.s==='十二炸'),'groups above three cards carry a pattern tag');
   h.events.Hide();
+});
+
+test('arranged hand is centred, bombs lead and only groups above three cards are tagged',async()=>{
+  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
+  for(const p of h.state.players)applyAction(h.state,p.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});
+  const deck=createDeck();
+  h.state.players[0].hand=[...deck.filter(card=>card.rank==='9').slice(0,4),...deck.filter(card=>card.rank==='7').slice(0,3),...deck.filter(card=>card.rank==='5').slice(0,2),deck.find(card=>card.rank==='K')!];h.publish();
+  h.click('一键理牌');
+  const hand=h.texts().filter(text=>text.y>170&&text.y<HAND_BOTTOM&&['9','7','5','K'].includes(text.s));
+  const left=Math.min(...hand.map(text=>text.x)),right=Math.max(...hand.map(text=>text.x));
+  assert.equal(hand.find(text=>text.x===left)?.s,'9','the bomb sits on the far left');
+  assert.ok(Math.abs((left+right+STACK.width)/2-480)<60,'the arranged hand is centred');
+  assert.ok(h.texts().some(text=>text.s==='四炸'));assert.ok(h.texts().some(text=>text.s==='三带二'));
+  assert.ok(!h.texts().some(text=>['对子','单张','三张'].includes(text.s)),'pairs, triples and singles stay untagged');
+  h.events.Hide();
+});
+
+test('stack layout keeps up to six cards in one column and splits larger groups into two columns overlapping by 30%',()=>{
+  const six=stackLayout([{count:6,single:false,ranks:['8','8','7','7','6','6']}]).cards[0];
+  assert.equal(new Set(six.map(card=>card.x)).size,1,'a six-card group stays in one column');
+  assert.equal(six[1].y-six[0].y,STACK.step);assert.equal(six[5].y+STACK.height,HAND_BOTTOM);
+  const eight=stackLayout([{count:8,single:false}]).cards[0],columns=[...new Set(eight.map(card=>card.x))];
+  assert.equal(columns.length,2);assert.ok(Math.abs(columns[1]-columns[0]-STACK.width*(1-STACK.pairOverlap))<.01,'split columns overlap by 30%');
+  // A typical wide arrangement tightens the gaps but never overlaps neighbouring groups.
+  const tight=stackLayout([...Array.from({length:9},()=>({count:3,single:false})),{count:4,single:true}]).cards;
+  for(let i=1;i<9;i++)assert.ok(tight[i][0].x-tight[i-1][0].x>=STACK.width,'groups keep clear of each other');
+  assert.ok(tight[9][0].x-tight[8][0].x>=STACK.width);
+  // Only a tall end column has to keep clear of the lower side seats; a short singles fan may pass beneath them.
+  const side={x:87,y:270},hand=[{count:6,single:false},...Array.from({length:6},()=>({count:3,single:false})),{count:5,single:true}];
+  const shifted=stackLayout(hand,side).cards;
+  assert.ok(shifted[0][0].x>=side.x,'a tall first column stays right of the seat');
+  assert.ok(Math.max(...shifted.at(-1)!.map(card=>card.x))+STACK.width>960-side.x,'the short right end may use the space under the seat');
+  for(let i=1;i<hand.length;i++)assert.ok(shifted[i][0].x-Math.max(...shifted[i-1].map(card=>card.x))>=STACK.width-.01,'shifting avoids overlap');
+  const wide=stackLayout([...Array.from({length:12},()=>({count:2,single:false})),{count:3,single:true}]);
+  const xs=wide.cards.flat().map(card=>card.x);
+  assert.ok(Math.min(...xs)>=23.99&&Math.max(...xs)+STACK.width<=936.01,'extreme hands still stay on the canvas');
+});
+
+test('side seats move one avatar toward wide screen edges, the lower pair one avatar down',()=>{
+  const phone=tableEdge(844,390,{left:44,top:0,right:800,bottom:369});
+  assert.ok(phone>23);assert.equal(tableEdge(960,540),0);
+  const wide=seatSpots(phone),narrow=seatSpots(0);
+  assert.equal(wide[4].cx,64-42);assert.equal(wide[2].cx,896+42);
+  assert.ok(narrow[4].cx-SIDE_SEAT_HALF>=8,'16:9 screens keep the side seat block on the canvas');
+  assert.equal(wide[5].y-wide[4].y,128);assert.equal(wide[1].y,wide[5].y);
 });
 
 test('other players played combinations expose every card header',async()=>{
@@ -245,19 +290,50 @@ test('other players played combinations expose every card header',async()=>{
   const cards=[...createDeck().filter(card=>card.rank==='6'&&card.suit==='spade').slice(0,3),...createDeck().filter(card=>card.rank==='7'&&card.suit==='club').slice(0,2)];
   h.state.players[1].hand=cards;h.state.currentTurnSeat=h.state.players[1].seat;
   applyAction(h.state,'p2',{type:'play',cardIds:cards.map(card=>card.id)});h.publish();
-  const headers=h.texts().filter(text=>(text.s==='6'||text.s==='7')&&text.y>200&&text.y<310).sort((a,b)=>a.x-b.x);
+  const headers=h.texts().filter(text=>(text.s==='6'||text.s==='7')&&text.y>130&&text.y<240).sort((a,b)=>a.x-b.x);
   assert.equal(headers.length,5);assert.ok(headers.slice(1).every((header,index)=>header.x-headers[index].x>=44),'played cards must leave every card face readable');
   h.events.Hide();
 });
 
-test('top player combinations render below the identity and action bar',async()=>{
+test('top player sits under the round label and plays just right of its name',async()=>{
   const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
   for(const player of h.state.players)applyAction(h.state,player.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});
   const cards=[...createDeck().filter(card=>card.rank==='6'&&card.suit==='spade').slice(0,3),...createDeck().filter(card=>card.rank==='7'&&card.suit==='club').slice(0,2)];
   h.state.players[3].hand=cards;h.state.currentTurnSeat=h.state.players[3].seat;
   applyAction(h.state,'p4',{type:'play',cardIds:cards.map(card=>card.id)});h.publish();
-  const headers=h.texts().filter(text=>(text.s==='6'||text.s==='7')&&text.y>190&&text.y<310);
-  assert.equal(headers.length,5);assert.ok(headers.every(header=>header.y>=220),'top player cards must clear the identity and default action bar');
+  // The harness measures CJK glyphs at 1 em and other characters at 0.55 em.
+  const width=(s:string,size:number)=>[...s].reduce((sum,c)=>sum+size*(c.charCodeAt(0)>255?1:.55),0);
+  const round=h.texts().find(text=>text.s.startsWith('第 1 局'))!;
+  assert.ok(Math.abs(round.x+width('第 1 ',16)+8-TOP_SEAT_CX)<1,'"局" sits above the top avatar');
+  const name=h.texts().find(text=>text.s==='玩家4')!,headers=h.texts().filter(text=>(text.s==='6'||text.s==='7')&&text.y<130);
+  assert.equal(headers.length,5);
+  assert.ok(headers.every(header=>header.x>name.x+width('玩家4',13)),'cards start right of the name');
+  assert.ok(headers.every(header=>header.y-12>=36),'cards stay below the header row');
+  h.events.Hide();
+});
+
+test('turn buttons and the countdown clock appear only on the viewer turn',async()=>{
+  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
+  for(const player of h.state.players)applyAction(h.state,player.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});
+  h.state.currentTurnSeat=2;h.state.deadline=Date.now()+20_000;h.publish();
+  for(const label of ['提示','不出','出牌'])assert.ok(!h.texts().some(text=>text.s===label),`${label} stays hidden on another player's turn`);
+  h.state.currentTurnSeat=1;h.publish();
+  for(const label of ['提示','不出','出牌'])assert.ok(h.texts().some(text=>text.s===label),`${label} shows on the viewer's turn`);
+  assert.ok(h.texts().some(text=>/^(19|20)$/.test(text.s)),'the countdown is drawn inside the clock');
+  assert.ok(!h.texts().some(text=>['轮到你','托管中'].includes(text.s)||text.s.endsWith(' 秒')),'only the four turn controls remain');
+  h.events.Hide();
+});
+
+test('choosing a straight-flush suit selects its cards without undoing the arrangement',async()=>{
+  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
+  for(const player of h.state.players)applyAction(h.state,player.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});
+  const deck=createDeck();
+  h.state.players[0].hand=[...['3','4','5','6','7'].map(rank=>deck.find(card=>card.rank===rank&&card.suit==='spade')!),...deck.filter(card=>card.rank==='9').slice(0,4)];h.publish();
+  h.click('一键理牌');assert.ok(h.texts().some(text=>text.s==='四炸'));
+  h.events.TouchStart({touches:[{clientX:816,clientY:520}]});h.events.TouchEnd();
+  assert.ok(h.texts().some(text=>text.s.startsWith('已选 5 张')),'the straight flush is selected');
+  assert.ok(h.texts().some(text=>text.s==='四炸'),'the arranged groups stay in place');
+  assert.equal(h.actions.length,0);
   h.events.Hide();
 });
 
@@ -267,7 +343,7 @@ test('long opponent bombs wrap into two readable rows',async()=>{
   const cards=createDeck().filter(card=>card.rank==='6');
   h.state.players[1].hand=cards;h.state.currentTurnSeat=h.state.players[1].seat;
   applyAction(h.state,'p2',{type:'play',cardIds:cards.map(card=>card.id)});h.publish();
-  const headers=h.texts().filter(text=>text.s==='6'&&text.y>190&&text.y<310);
+  const headers=h.texts().filter(text=>text.s==='6'&&text.y>130&&text.y<240);
   const rows=[...new Set(headers.map(header=>header.y))].sort((a,b)=>a-b);
   assert.equal(headers.length,12);assert.deepEqual(rows.map(y=>headers.filter(header=>header.y===y).length),[6,6]);
   for(const y of rows){
@@ -290,7 +366,7 @@ test('avatar loading retries after a stale response completes outside the room',
 
 test('oversized avatar selection keeps the last valid preview and upload',async()=>{
   const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
-  h.events.TouchStart({touches:[{clientX:68,clientY:306}]});h.events.TouchEnd();
+  const own=seatBounds(0);h.events.TouchStart({touches:[{clientX:own.x+20,clientY:own.y+own.h/2}]});h.events.TouchEnd();
   const valid='aGVsbG8=';h.avatar.choices.push({path:'valid.png',data:valid});h.click('选择头像');
   assert.equal(h.drawnImages().at(-1),'valid.png');
   h.avatar.choices.push({path:'oversized.png',data:'A'.repeat(350_001)});h.click('选择头像');
@@ -338,6 +414,31 @@ test('game requires a valid return card and can continue from settlement',async(
 });
 
 test('game room configuration uses touch controls and reaches the create request',async()=>{
-  const h=harness(true);h.click('更多房间设置');h.click('记牌器：开');h.click('完成');h.click('创建房间');await h.flush();
-  assert.equal(h.requests.at(-1)?.data.rules.allowCounter,false);h.events.Hide();
+  const h=harness(true);h.click('更多房间设置');
+  assert.ok(!h.texts().some(t=>t.s.startsWith('记牌器')),'the card counter is hidden until it becomes a paid feature');
+  h.click('允许托管：开');h.click('完成');h.click('创建房间');await h.flush();
+  assert.equal(h.requests.at(-1)?.data.rules.allowAutoPlay,false);h.events.Hide();
+});
+
+test('table header drops invite and connection status once play starts and hides the card counter',async()=>{
+  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();h.publish();
+  for(const label of ['邀请','已连接','返回大厅'])assert.ok(h.texts().some(t=>t.s===label),`waiting room shows ${label}`);
+  for(const p of h.state.players)applyAction(h.state,p.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});h.publish();
+  assert.ok(h.texts().some(t=>t.s==='返回大厅'));
+  for(const label of ['邀请','已连接','大厅','记牌'])assert.ok(!h.texts().some(t=>t.s===label),`${label} is hidden during play`);
+  h.events.Hide();
+});
+
+test('opponent card counts appear only at ten cards or fewer',async()=>{
+  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
+  for(const p of h.state.players)applyAction(h.state,p.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});
+  h.state.players[1].hand=h.state.players[1].hand.slice(0,11);h.state.players[2].hand=h.state.players[2].hand.slice(0,10);h.publish();
+  assert.ok(!h.texts().some(t=>/\b(11|27) 张/.test(t.s)),'counts above ten stay hidden');
+  assert.ok(h.texts().some(t=>t.s.includes('10 张')));
+  h.events.Hide();
+});
+
+test('table colour choice applies immediately and is remembered',async()=>{
+  const h=harness(true);h.click('深蓝');assert.equal(h.storage.get('gd6.ui.theme'),'blue');
+  h.click('藏青');assert.equal(h.storage.get('gd6.ui.theme'),'navy');h.events.Hide();
 });
