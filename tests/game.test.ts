@@ -458,3 +458,20 @@ test('autoplay fully completes a dealt six-player round with valid unique finish
   assert.ok(state.totalPlays > 0);
   assert.ok(turns < 1200);
 });
+
+test('the largest tribute leads next; after 抗贡 the previous 头游 leads and single tributes need three big jokers', () => {
+  assert.equal(room().rules.singleResistanceJokers,3);
+  const state = handFixture([['3','9'],['4','Q','5'],['6'],['8','A','7'],['9'],['10']]);
+  state.status = 'tribute';
+  state.tribute = [{ from: 2, to: 1, given: false, returned: false },{ from: 4, to: 3, given: false, returned: false }];
+  applyAction(state,'p2',{ type: 'tribute' });applyAction(state,'p4',{ type: 'tribute' });
+  applyAction(state,'p1',{ type: 'tribute', cardId: state.players[0].hand.find(c => c.rank === '3')!.id });
+  applyAction(state,'p3',{ type: 'tribute', cardId: state.players[2].hand.find(c => c.rank === '6')!.id });
+  assert.equal(state.status,'playing');assert.equal(state.currentTurnSeat,4,'the A tribute outranks the Q tribute');
+
+  const resisted = nearFinish([1,2,3,4,5,6]);play(resisted,5);
+  resisted.rules.singleResistanceJokers = 0; // force resistance whatever the deal
+  applyAction(resisted,'p1',{ type: 'next' });
+  assert.equal(resisted.status,'playing');assert.equal(resisted.currentTurnSeat,1);assert.deepEqual(resisted.resistedSeats,[6]);
+  assert.deepEqual(resisted.tribute,[]);
+});

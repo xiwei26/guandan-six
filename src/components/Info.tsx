@@ -10,7 +10,7 @@ export function Rules({onClose}:{onClose:()=>void}) {
     <section><span>02</span><div><h3>三副牌，每人还是 27 张</h3><p>共 162 张，三张红桃级牌都是逢人配。单张、对子、三张、三带二、顺子、三连对、钢板，都是熟悉的牌型。</p></div></section>
     <section><span>03</span><div><h3>炸弹看张数，同花顺排在中间</h3><p>天王炸（3 大王 + 3 小王）＞ 12 炸 ＞ … ＞ 7 炸 ＞ 3 大王 ＞ 3 小王 ＞ 6 炸 ＞ 同花顺 ＞ 5 炸 ＞ 4 炸。王炸不可使用逢人配。</p></div></section>
     <section><span>04</span><div><h3>看末尾名次，最高升 4 级</h3><p>头游所在队获胜。末尾连续三、二、一名对手分别升 4、3、2 级；末游为己方时只升 1 级。胜方三人出完后，其余玩家按剩牌数从多到少排为末游、五游、四游。打到 A 须在己方打 A 的一局拿到头游且末游是对方；否则记闯关失败，累计 3 次退回打 2。</p></div></section>
-  </div><details className="rules-detail"><summary>接风、贡还贡与操作说明</summary><p>玩家出完后，若最后一手无人压，顺时针最近的仍有手牌队友接风；无队友时交给下一位未出完玩家。</p><p>末尾连续三、二、一名对手时，由这几名对手进贡；末游与头游同队时，由末游向本队头游进贡。贡牌按大小依次给头游及其后的胜方玩家。贡最大的非逢人配牌，还 10 以下非级牌；没有小牌时还最小非逢人配牌。</p><p>单贡方持有至少两张大王可抗贡；多贡时败队合计三张大王，全队抗贡。抗贡由上局头游首出。</p><p>点击或横向滑动选择手牌，「提示」循环推荐。自由首出不能不出。时间到按配置托管：跟牌优先不出，首出尽量保留炸弹和逢人配。</p></details><button className="button primary full-width" onClick={onClose}>明白了，入座开掼</button></Modal>;
+  </div><details className="rules-detail"><summary>接风、贡还贡与操作说明</summary><p>玩家出完后，若最后一手无人压，顺时针最近的仍有手牌队友接风；无队友时交给下一位未出完玩家。</p><p>末尾连续三、二、一名对手时，由这几名对手进贡；末游与头游同队时，由末游向本队头游进贡。贡牌按大小依次给头游及其后的胜方玩家。贡最大的非逢人配牌，还 10 以下非级牌；没有小牌时还最小非逢人配牌。</p><p>单贡方须持有三张大王才能抗贡；多贡时败队合计三张大王，全队抗贡。抗贡由上局头游首出。</p><p>点击或横向滑动选择手牌，「提示」循环推荐。自由首出不能不出。时间到按配置托管：跟牌优先不出，首出尽量保留炸弹和逢人配。</p></details><button className="button primary full-width" onClick={onClose}>明白了，入座开掼</button></Modal>;
 }
 export function History({session,onClose}:{session:Session|null;onClose:()=>void}) {
   const [entries,setEntries]=useState<HistoryEntry[]|null>(null);const [stats,setStats]=useState<StatsSummary|null>(null);const [error,setError]=useState('');

@@ -5,7 +5,7 @@ import { canLeaveCompletely, leaveMessage } from '../miniprogram/utils/room-exit
 import {arrangeHand,reconcileGroups,manualGroup,displayGroups,groupTag,patternName,type HandGroup} from './arrangement';
 import { findHints } from '../shared/cards';
 import type { RoomView, GameAction, RuleConfig } from '../shared/types';
-import { WIDTH, HEIGHT, HAND_BOTTOM, STACK, TOP_SEAT_CX, SIDE_SEAT_HALF, viewport, hitAt, handLayout, stackLayout, seatSpots, seatBounds, lobbySpread, tableEdge, type Hit } from './layout';
+import { WIDTH, HEIGHT, HAND_BOTTOM, STACK, TOP_SEAT_CX, SIDE_SEAT_HALF, SIDE_SEAT_TEXT, viewport, hitAt, handLayout, stackLayout, seatSpots, seatBounds, lobbySpread, tableEdge, type Hit } from './layout';
 import { Painter, COLORS as C, THEMES, applyTheme, type ThemeName, type CardFace } from './paint';
 
 /** The card counter is reserved as a future paid feature; flip this to show it again. */
@@ -13,7 +13,7 @@ const CARD_COUNTER_ENABLED=false;
 
 type TouchEvent={touches:{clientX:number;clientY:number}[]};
 type Box={x:number;y:number;w:number;h:number};
-type HandItems={cards:{view:CardFace;id:string;x:number;y:number;w:number;h:number;index:'row'|'column'}[];tags:{label:string;right:number;bottom:number}[]};
+type HandItems={cards:{view:CardFace;id:string;x:number;y:number;w:number;h:number;index:'row'|'column';strip:number}[];tags:{label:string;right:number;bottom:number}[]};
 type Launch={query?:Record<string,string>};
 export type GamePlatform=Pick<typeof wx,'request'|'login'|'getStorageSync'|'setStorageSync'|'removeStorageSync'|'getAccountInfoSync'|'connectSocket'|'showModal'|'showToast'|'setClipboardData'|'onNetworkStatusChange'> & {
   env:{USER_DATA_PATH:string};
@@ -47,7 +47,7 @@ const RULES=[
   '胜方三人出完后，其余玩家不再出牌，按剩牌数从多到少排为末游、五游、四游，直接进入下一局。',
   '出完者最后一手无人压，由顺时针最近的未出完队友接风，无队友则由下一人首出。',
   '末尾 3 / 2 / 1 名均为对手时，这几名对手进贡；末游与头游同队时，末游向本队头游进贡。贡牌按大小依次给头游及其后的胜方玩家。进最大非逢人配牌；还 2–9 非级牌，没有时还最小非逢人配。',
-  '单贡者有 2 张大王可抗贡；双/三贡败队合计 3 张大王可抗贡。抗贡由上局头游首出。',
+  '首局随机选人首出，之后由进贡牌最大者首出。单贡者须有 3 张大王、双/三贡败队合计 3 张大王可抗贡，抗贡时由上局头游首出。',
   '打到 A：须在己方打 A 的一局拿到头游，且末游是对方。对方头游，或头游末游都是己方，记闯关失败一次；前者对方继续升级，后者下局继续打 A。累计失败 3 次退回打 2。',
   '固定局数打满结束，展示等级与本局排名。'
 ];
@@ -76,6 +76,9 @@ export class GuandanGame {
   private hintIndex=0;
   private drag?:{select:boolean;seen:Set<string>};
   private theme:ThemeName='green';
+  /** Where the viewer dragged the turn buttons; unset means automatic placement. */
+  private turnPos?:{x:number;y:number};
+  private press?:{run:()=>void;x:number;y:number;origin:{x:number;y:number};width:number;moved:boolean};
   private avatarImages=new Map<string,{version:string;image?:HTMLImageElement;loading:boolean}>();
   private profileOpen=false;
   private profileNickname='';
@@ -92,16 +95,18 @@ export class GuandanGame {
   private swapping=false;
   constructor(private platform:GamePlatform) {
     this.api=new MiniClient(platform);this.nickname=this.api.session()?.nickname||'牌友';
+    const turnPos=platform.getStorageSync('gd6.ui.turnButtons') as {x?:number;y?:number}|undefined;
+    if(turnPos&&Number.isFinite(turnPos.x)&&Number.isFinite(turnPos.y))this.turnPos={x:turnPos.x!,y:turnPos.y!};
     const theme=platform.getStorageSync('gd6.ui.theme') as ThemeName|undefined;
     if(theme&&theme in THEMES)this.theme=theme;applyTheme(this.theme);
     this.canvas=platform.createCanvas();this.ctx=this.canvas.getContext('2d')!;this.paint=new Painter(this.ctx);
     this.resize();
     platform.onWindowResize(()=>this.resize());
     platform.onTouchStart(e=>this.touch(e,false));platform.onTouchMove(e=>this.touch(e,true));
-    platform.onTouchEnd(()=>{this.drag=undefined;});platform.onTouchCancel(()=>{this.drag=undefined;});
+    platform.onTouchEnd(()=>{this.drag=undefined;this.release();});platform.onTouchCancel(()=>{this.drag=undefined;this.press=undefined;});
     platform.onKeyboardConfirm(e=>this.finishInput(e.value));
     platform.onKeyboardComplete(()=>{this.editing=undefined;this.draw();});
-    platform.onHide(()=>{this.visible=false;this.epoch++;this.connection?.stop();this.drag=undefined;this.stopClock();});
+    platform.onHide(()=>{this.visible=false;this.epoch++;this.connection?.stop();this.drag=undefined;this.press=undefined;this.stopClock();});
     platform.onShow(launch=>{this.visible=true;this.launch(launch);this.startClock();if(this.room)void this.restore(this.room.roomId);else{this.draw();void this.syncLobbyRoom();}});
     platform.onNetworkStatusChange(e=>{if(e.isConnected&&this.visible){if(this.room)void this.restore(this.room.roomId);else void this.syncLobbyRoom();}});
     platform.showShareMenu({menus:['shareAppMessage']});platform.onShareAppMessage(()=>this.share());
@@ -146,12 +151,21 @@ export class GuandanGame {
   }
   private touch(e:TouchEvent,moving:boolean){if(this.busy||this.editing)return;const t=e.touches[0];if(!t)return;
     const x=(t.clientX-this.view.x)/this.view.scale,y=(t.clientY-this.view.y)/this.view.scale;
-    if(!moving)this.drag=undefined;
+    if(moving&&this.press){
+      const press=this.press;if(!press.moved&&Math.hypot(x-press.x,y-press.y)<8)return;
+      press.moved=true;this.turnPos=this.clampTurn({x:press.origin.x+x-press.x,y:press.origin.y+y-press.y},press.width);this.draw();return;
+    }
+    if(!moving){this.drag=undefined;this.press=undefined;}
     const h=hitAt(this.hits,x,y);
+    // Turn buttons act on release so the same touch can drag the whole row instead.
+    if(!moving&&h?.row){this.press={run:h.run,x,y,origin:{x:h.row.x,y:h.row.y},width:h.row.width,moved:false};return;}
     if(!moving){if(h?.card)this.drag={select:!this.selected.includes(h.card),seen:new Set()};}
     if(h?.card&&this.drag){if(!this.drag.seen.has(h.card)){this.drag.seen.add(h.card);this.selected=this.drag.select?[...new Set([...this.selected,h.card])]:this.selected.filter(id=>id!==h.card);this.draw();}}
     else if(!moving)h?.run();
   }
+  private release(){const press=this.press;this.press=undefined;if(!press)return;
+    if(press.moved){this.platform.setStorageSync('gd6.ui.turnButtons',this.turnPos);this.draw();}else press.run();}
+  private clampTurn(pos:{x:number;y:number},width:number){return {x:Math.max(8-this.edge,Math.min(WIDTH+this.edge-8-width,pos.x)),y:Math.max(36,Math.min(HAND_BOTTOM-64,pos.y))};}
   private input(title:string,value:string,done:(s:string)=>void,maxLength=80){this.editing={title,done};this.draw();
     this.platform.showKeyboard({defaultValue:value,maxLength,multiple:false,confirmHold:false,confirmType:'done',fail:()=>{this.editing=undefined;this.error(new Error('无法打开输入键盘，请重试'));}});}
   private finishInput(value:string){const editing=this.editing;this.editing=undefined;this.platform.hideKeyboard({});if(editing){try{editing.done(value.trim());}catch(e){this.error(e);}}this.draw();}
@@ -328,7 +342,7 @@ export class GuandanGame {
     if(vm.waiting)this.button('邀请',562,6,64,()=>this.platform.shareAppMessage(this.share()),true,false,30,14);
     if(vm.waiting||!online)this.button(online?'已连接':'重连',632,6,76,()=>void this.restore(room.roomId),!online,false,30,14);
     this.button('返回大厅',714,6,92,()=>this.leave(),true,false,30,14);
-    let topTextRight=TOP_SEAT_CX+40;
+    let topTextRight=TOP_SEAT_CX+40,ownTextRight=100;
     vm.seats.forEach(seat=>{
       const spot=spots[seat.relative],{cx,y,size}=spot,own=seat.relative===0,teamColor=seat.team==='A'?C.blue:C.orange;
       const player=room.players.find(item=>item.seat===seat.seat),avatar=player?this.avatarImages.get(player.userId)?.image:undefined;
@@ -338,12 +352,13 @@ export class GuandanGame {
       const name=own?seat.nickname.replace(/ · 你$/,''):seat.nickname,color=seat.low?C.gold:teamColor;
       const secondary=vm.waiting?seat.team+'队 · '+(seat.ready?'已准备':'未准备'):this.seatStatus(room,seat,player);
       if(spot.row){
-        const x=cx+size/2+9;this.paint.text(name,x,y+size/2-8,13,C.text,500,'sans-serif',124);this.paint.text(secondary,x,y+size/2+9,11,color,400,'sans-serif',150);
-        if(seat.relative===3)topTextRight=x+Math.min(150,Math.max(this.measure(name,13,500),this.measure(secondary,11)));
+        const x=cx+size/2+9;this.paint.text(name,x,y+size/2-10,17,C.text,500,'sans-serif',124);this.paint.text(secondary,x,y+size/2+12,14,color,400,'sans-serif',150);
+        const right=x+Math.min(150,Math.max(this.measure(name,17,500),this.measure(secondary,14)));
+        if(seat.relative===3)topTextRight=right;else ownTextRight=right;
       }else{
-        // Names stay narrow beside a play hugging the avatar; the status line may use the room out to the screen edge.
-        const reach=Math.min(77,cx<WIDTH/2?cx+this.edge-4:WIDTH+this.edge-cx-4);
-        this.centeredText(name,cx,y+size+11,13,C.text,SIDE_SEAT_HALF*2-8);this.centeredText(secondary,cx,y+size+27,11,color,reach*2);
+        // The text may use the room out to the screen edge; a play hugging the avatar sits above the name row.
+        const reach=Math.min(90,cx<WIDTH/2?cx+this.edge-4:WIDTH+this.edge-cx-4);
+        this.centeredText(name,cx,y+size+14,17,C.text,reach*2);this.centeredText(secondary,cx,y+size+33,14,color,reach*2);
       }
       const bounds=seatBounds(seat.relative,this.edge);
       if(own)this.hits.push({...bounds,run:()=>this.openProfile()});
@@ -352,6 +367,7 @@ export class GuandanGame {
         else{this.act({type:'swap',seat:this.swapSeat,target:seat.seat});this.swapping=false;this.swapSeat=0;}
       }});
     });
+    if(!vm.waiting)this.drawExchange(room,spots,ownTextRight);
     if(vm.waiting){
       const realCount=room.players.filter(player=>!player.bot).length;
       this.centeredText(room.mode==='computer'?'真人不满六人，空位电脑补位':'等待六位牌友准备',480,214,26,C.text,590);
@@ -369,8 +385,9 @@ export class GuandanGame {
     let play:{box:Box;relative:number}|undefined;
     if(room.lastPlay&&room.lastPlaySeat!==null&&vm.played.length)play=this.drawPlayed(room,vm,spots,topTextRight,handTop);
     else if(!vm.tribute&&!vm.mine)this.centeredText('等待首出',480,140,22,C.muted,240);
-    if(vm.tribute)this.centeredText('贡还贡 · 按提示选择牌',480,100,17,C.gold,300);
+    if(vm.tribute)this.centeredText('贡还贡 · 按提示选择牌',480,104,17,C.gold,300);
     this.drawHand(hand);
+    this.drawTurnClock(room,spots,topTextRight,handTop,play);
     this.drawTools(room,vm,online);
     this.drawTurnButtons(room,vm,online,spots,play);
     if(vm.ended){
@@ -391,20 +408,47 @@ export class GuandanGame {
   private drawPlayed(room:RoomView,vm:ReturnType<typeof tableView>,spots:ReturnType<typeof seatSpots>,topTextRight:number,handTop:(x0:number,x1:number)=>number){
     const relative=(room.lastPlaySeat!-room.mySeat+6)%6,cards=vm.played,combination=room.lastPlay!,own=relative===0;
     const w=own?42:48,h=own?63:64,gap=own?24:46,rows=!own&&cards.length>6?2:1,perRow=Math.ceil(cards.length/rows);
-    const width=w+(perRow-1)*gap,height=h+(rows-1)*22,spot=spots[relative];
+    const width=w+(perRow-1)*gap,height=h+(rows-1)*22,spot=spots[relative],right=relative===1||relative===2;
+    const label=combination.type==='single'?'':patternName(combination.type,combination.size,combination.label),tagWidth=label?this.paint.tagWidth(label)+4:0;
     let x:number,y:number,lifted=false;
     if(own){x=480-width/2;y=110;}
-    else if(relative===3){x=topTextRight+10;y=36;}
+    else if(relative===3){x=topTextRight+12;y=36;}
     else{
-      x=relative>=4?spot.cx+32:spot.cx-32-width;y=spot.y-4;
-      const clear=handTop(x,x+width)-height-6;
+      x=right?spot.cx-36-width:spot.cx+36;y=spot.y-4;
+      const clear=handTop(right?x-tagWidth:x,right?x+width:x+width+tagWidth)-height-6;
       if(clear<y){y=Math.max(110,clear);lifted=true;}
     }
     for(let row=0;row<rows;row++)cards.slice(row*perRow,(row+1)*perRow).forEach((card,i)=>this.card(card,x+i*gap,y+row*22,w,h));
-    const lastRow=cards.length-(rows-1)*perRow;
-    if(combination.type!=='single')this.paint.tag(patternName(combination.type,combination.size,combination.label),x+(lastRow-1)*gap+w-3,y+height-3);
+    // Other players' cards carry the suit bottom-left, so the pattern tag sits beside the row, away from the avatar.
+    if(label)right?this.paint.tag(label,x-4,y+height):this.paint.tag(label,x+width+4,y+height,'left');
     if(lifted)this.centeredText(room.players.find(player=>player.seat===room.lastPlaySeat)?.nickname??'',x+width/2,y-9,12,C.muted,width);
-    return {box:{x,y,w:width,h:height},relative};
+    return {box:{x:right?x-tagWidth:x,y,w:width+tagWidth,h:height},relative};
+  }
+  /**
+   * Public tribute: the card each player received sits at the avatar corner away from their plays
+   * (the viewer's beside their name); a player who resisted gets a round 抗 badge there instead.
+   */
+  private drawExchange(room:RoomView,spots:ReturnType<typeof seatSpots>,ownTextRight:number){
+    const received=new Map<number,RoomView['hand'][number]>();
+    for(const item of room.tribute){if(item.given&&item.card)received.set(item.to,item.card);if(item.returned&&item.returnCard)received.set(item.from,item.returnCard);}
+    const resisted=room.tributeResisted?room.resistedSeats??[]:[];
+    for(let relative=0;relative<6;relative++){
+      const seat=(room.mySeat-1+relative)%6+1,card=received.get(seat);if(!card&&!resisted.includes(seat))continue;
+      const spot=spots[relative],right=relative===1||relative===2;
+      const x=relative===0?ownTextRight+10:right?spot.cx+spot.size/2-14:spot.cx-spot.size/2-16,y=relative===0?spot.y+2:spot.y+spot.size-40;
+      if(card)this.paint.miniCard(cardView(card,room.currentLevel),x,y);else this.paint.resistMark(x+15,y+20);
+    }
+  }
+  /** Another player's turn shows a small countdown clock where their cards will land; it goes once they act. */
+  private drawTurnClock(room:RoomView,spots:ReturnType<typeof seatSpots>,topTextRight:number,handTop:(x0:number,x1:number)=>number,play?:{box:Box;relative:number}){
+    if(room.status!=='playing'||room.deadline===null||room.currentTurnSeat===room.mySeat)return;
+    const relative=(room.currentTurnSeat-room.mySeat+6)%6,spot=spots[relative],size=40;
+    const x=relative===3?topTextRight+12:relative===1||relative===2?spot.cx-36-size:spot.cx+36;
+    let y=relative===3?36+(64-size)/2:spot.y+(spot.size-size)/2;
+    // Lower side seats keep the clock clear of tall arranged columns, and below an upper seat's play.
+    if(relative===1||relative===5)y=Math.min(y,Math.max(play?play.box.y+play.box.h+4:128,handTop(x,x+size)-size-6));
+    const seconds=Math.max(0,Math.ceil((room.deadline-Date.now())/1000));
+    this.paint.alarmClock(x+size/2,y+size/2,size,String(seconds),seconds<=5);
   }
   /** 提示 / 不出 / 出牌 and the countdown clock appear only when the viewer has to act, clear of the last play. */
   private drawTurnButtons(room:RoomView,vm:ReturnType<typeof tableView>,online:boolean,spots:ReturnType<typeof seatSpots>,play?:{box:Box;relative:number}){
@@ -420,17 +464,20 @@ export class GuandanGame {
     const total=buttons.reduce((sum,button)=>sum+button[1]+gap,0)+(seconds===null?-gap:clock);
     let x=480-total/2,y=108;
     const box=play?.box;
-    if(box&&box.y<y+h&&box.y+box.h>y){
+    if(this.turnPos)({x,y}=this.clampTurn(this.turnPos,total));
+    else if(box&&box.y<y+h&&box.y+box.h>y){
       if(play!.relative===3)y=box.y+box.h+6;
       else if(box.x+box.w/2<WIDTH/2)x=Math.max(x,box.x+box.w+10);
       else x=Math.min(x,box.x-10-total);
     }
     // Stay between the side seats so a seat name is never hidden behind the buttons.
-    x=Math.max(spots[4].cx+SIDE_SEAT_HALF+8,Math.min(spots[2].cx-SIDE_SEAT_HALF-8-total,x));
+    if(!this.turnPos)x=Math.max(spots[4].cx+SIDE_SEAT_HALF+8,Math.min(spots[2].cx-SIDE_SEAT_HALF-8-total,x));
+    // Every part of the row can start a drag; a tap acts on release.
+    const row={x,y,width:total};
     for(const [label,w,colors,enabled,run] of buttons){
-      this.paint.actionButton(label,x,y,w,h,colors,enabled);if(enabled&&!this.busy)this.hits.push({x,y,w,h,run});x+=w+gap;
+      this.paint.actionButton(label,x,y,w,h,colors,enabled);this.hits.push({x,y,w,h,run:enabled?run:()=>{},row});x+=w+gap;
     }
-    if(seconds!==null)this.paint.alarmClock(x+clock/2,y+h/2,clock,String(seconds),seconds<=5);
+    if(seconds!==null){this.paint.alarmClock(x+clock/2,y+h/2,clock,String(seconds),seconds<=5);this.hits.push({x,y,w:clock,h,run:()=>{},row});}
   }
   /** Hand tools live in the bottom-right strip below the hand, beside the viewer's identity chip. */
   private drawTools(room:RoomView,vm:ReturnType<typeof tableView>,online:boolean){
@@ -466,7 +513,7 @@ export class GuandanGame {
     const cards:HandItems['cards']=[],tags:HandItems['tags']=[];
     if(!this.groups){
       const views=vm.rows.flatMap(row=>row.cards),layout=handLayout(views.length);
-      views.forEach((view,index)=>cards.push({view,id:view.id,x:layout.left+index*layout.step,y:layout.top-(view.selected?18:0),w:layout.width,h:layout.height,index:'column'}));
+      views.forEach((view,index)=>cards.push({view,id:view.id,x:layout.left+index*layout.step,y:layout.top-(view.selected?18:0),w:layout.width,h:layout.height,index:'column',strip:index<views.length-1?layout.step:layout.width}));
       return {cards,tags};
     }
     const cardsById=new Map(room.hand.map(card=>[card.id,card])),blocks:{ids:string[];tag:string|null;single:boolean}[]=[],singles:string[]=[];
@@ -475,12 +522,13 @@ export class GuandanGame {
       if(ids.length===1)singles.push(ids[0]);else if(ids.length)blocks.push({ids,tag:ids.length===group.ids.length?groupTag(group):null,single:false});
     }
     if(singles.length)blocks.push({ids:singles,tag:null,single:true});
-    const seat=spots[5],side={x:seat.cx+SIDE_SEAT_HALF+8,y:seat.y+seat.size+36};
+    const seat=spots[5],side={x:seat.cx+SIDE_SEAT_HALF+8,y:seat.y+seat.size+SIDE_SEAT_TEXT};
     const layout=stackLayout(blocks.map(block=>({count:block.ids.length,single:block.single,ranks:block.ids.map(id=>cardsById.get(id)!.rank)})),side);
     blocks.forEach((block,b)=>{
       block.ids.forEach((id,i)=>{
         const view=cardView(cardsById.get(id)!,room.currentLevel,this.selected);
-        cards.push({view,id,x:layout.cards[b][i].x,y:layout.cards[b][i].y-(view.selected?15:0),w:STACK.width,h:STACK.height,index:block.single?'column':'row'});
+        const next=block.single?layout.cards[b][i+1]:undefined;
+        cards.push({view,id,x:layout.cards[b][i].x,y:layout.cards[b][i].y-(view.selected?15:0),w:STACK.width,h:STACK.height,index:block.single?'column':'row',strip:next?next.x-layout.cards[b][i].x:STACK.width});
       });
       const tag=layout.tags[b];
       if(block.tag&&tag)tags.push({label:block.tag,right:tag.right,bottom:tag.bottom-(this.selected.includes(block.ids[block.ids.length-1])?15:0)});
@@ -488,11 +536,11 @@ export class GuandanGame {
     return {cards,tags};
   }
   private drawHand(hand:HandItems){
-    for(const card of hand.cards){this.card(card.view,card.x,card.y,card.w,card.h,card.index);this.hits.push({x:card.x,y:card.y,w:card.w,h:card.h,card:card.id,run:()=>{}});}
+    for(const card of hand.cards){this.card(card.view,card.x,card.y,card.w,card.h,card.index,1.3,card.strip);this.hits.push({x:card.x,y:card.y,w:card.w,h:card.h,card:card.id,run:()=>{}});}
     for(const tag of hand.tags)this.paint.tag(tag.label,tag.right,tag.bottom);
   }
-  private card(c:CardFace,x:number,y:number,w:number,h:number,index?:'row'|'column'){
-    this.paint.card(c,x,y,w,h,index);
+  private card(c:CardFace,x:number,y:number,w:number,h:number,index?:'row'|'column',scale=1,strip=Infinity){
+    this.paint.card(c,x,y,w,h,index,scale,strip);
   }
   private drawPanel(){const p=this.overlay!;this.hits=[];this.paint.scrim();this.paint.paperPanel(105,64,750,430);this.paper=true;this.text(p.title,132,99,27,C.ink);
     const lines:string[]=[];for(const line of p.lines){let part='';for(const ch of line){this.ctx.font='18px sans-serif';if(this.ctx.measureText(part+ch).width>685){lines.push(part);part=ch;}else part+=ch;}lines.push(part);}

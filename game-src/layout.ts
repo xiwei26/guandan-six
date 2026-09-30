@@ -15,27 +15,29 @@ export function tableEdge(width:number,height:number,safe?:{left:number;top:numb
   return Math.max(0,(((safe?.right??width)-(safe?.left??0))/view.scale-WIDTH)/2);
 }
 /**
- * Seat anchors by position relative to the viewer. Side seats sit one avatar closer to the screen edge where the
- * safe area allows (on 16:9 they keep their name block on screen), and the lower pair sits one avatar lower.
- * The top seat and the viewer's own chip put the name beside the avatar to save vertical room.
+ * Seat anchors by position relative to the viewer. Side seats sit closer to the screen edge where the safe area
+ * allows (on 16:9 they keep their name block on screen), and the lower pair sits lower. Avatars and seat text are
+ * 1.3 × their earlier size. The top seat and the viewer's own chip put the name beside the avatar.
  */
 export function seatSpots(edge=0){
-  const shift=Math.min(42,19+edge);
+  const shift=Math.min(42,18+edge);
   return [
-    {cx:40,y:503,size:34,row:true},
-    {cx:896+shift,y:192,size:42,row:false},
-    {cx:896+shift,y:64,size:42,row:false},
-    {cx:TOP_SEAT_CX,y:44,size:40,row:true},
-    {cx:64-shift,y:64,size:42,row:false},
-    {cx:64-shift,y:192,size:42,row:false},
+    {cx:44,y:496,size:44,row:true},
+    {cx:896+shift,y:192,size:55,row:false},
+    {cx:896+shift,y:64,size:55,row:false},
+    {cx:TOP_SEAT_CX,y:42,size:52,row:true},
+    {cx:64-shift,y:64,size:55,row:false},
+    {cx:64-shift,y:192,size:55,row:false},
   ] as const;
 }
 /** Half-width of a side seat block (avatar, name and status line). */
-export const SIDE_SEAT_HALF = 34;
+export const SIDE_SEAT_HALF = 42;
+/** Height of a side seat block below the avatar top: avatar, name and status line. */
+export const SIDE_SEAT_TEXT = 42;
 /** Tap target for a seat, used for profile and seat swapping. */
 export function seatBounds(relative:number,edge=0){
   const s=seatSpots(edge)[relative];
-  return s.row?{x:s.cx-s.size/2-4,y:s.y-4,w:s.size+140,h:s.size+8}:{x:s.cx-SIDE_SEAT_HALF-6,y:s.y-4,w:SIDE_SEAT_HALF*2+12,h:s.size+36};
+  return s.row?{x:s.cx-s.size/2-4,y:s.y-4,w:s.size+150,h:s.size+8}:{x:s.cx-SIDE_SEAT_HALF-6,y:s.y-4,w:SIDE_SEAT_HALF*2+12,h:s.size+SIDE_SEAT_TEXT};
 }
 export function handLayout(count:number){
   const width=135,height=162,step=count>1?Math.min(72,(912-width)/(count-1)):0;
@@ -83,7 +85,8 @@ export function stackLayout(blocks:{count:number;single:boolean;ranks?:string[]}
   });
   return {cards,tags,width,height};
 }
-export type Hit = {x:number;y:number;w:number;h:number;run:()=>void;card?:string};
+/** `row` marks a control that can also be dragged, moving the whole row from its current origin. */
+export type Hit = {x:number;y:number;w:number;h:number;run:()=>void;card?:string;row?:{x:number;y:number;width:number}};
 export function viewport(width:number,height:number,safe?:{left:number;top:number;right:number;bottom:number}) {
   const left=safe?.left??0,top=safe?.top??0;
   const scale=Math.min(((safe?.right??width)-left)/WIDTH,((safe?.bottom??height)-top)/HEIGHT);

@@ -38,6 +38,9 @@ export function createApplication(options: Options = {}) {
       if (typeof room.roundBomb !== 'number') room.roundBomb = 0;
       if (!room.playedCounts) room.playedCounts = {};
       if (!room.aceFailures) room.aceFailures = { A: 0, B: 0 };
+      if (!room.resistedSeats) room.resistedSeats = [];
+      // 2 was the old default and no client exposes the setting: single tributes now need three big jokers.
+      if (room.rules.singleResistanceJokers === 2) room.rules.singleResistanceJokers = 3;
       rooms.set(room.roomId,room);
     });
     saved.sessions.forEach(([tokenHash,session]) => sessions.set(tokenHash,session));

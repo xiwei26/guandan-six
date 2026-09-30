@@ -11,7 +11,7 @@ export interface RuleConfig {
  resistance: boolean; singleResistanceJokers: number; teamResistanceJokers: number;
  straightFlushBeats: number; mustBeatAce: boolean;
 }
-export const DEFAULT_RULES: RuleConfig = {ruleVersion:'6P_V2',deckCount:3,playerCount:6,cardsPerPlayer:27,teamSize:3,rounds:'A',turnSeconds:30,showRemaining:true,allowAutoPlay:true,allowCounter:true,resistance:true,singleResistanceJokers:2,teamResistanceJokers:3,straightFlushBeats:5,mustBeatAce:true};
+export const DEFAULT_RULES: RuleConfig = {ruleVersion:'6P_V2',deckCount:3,playerCount:6,cardsPerPlayer:27,teamSize:3,rounds:'A',turnSeconds:30,showRemaining:true,allowAutoPlay:true,allowCounter:true,resistance:true,singleResistanceJokers:3,teamResistanceJokers:3,straightFlushBeats:5,mustBeatAce:true};
 export interface Player { userId: string; nickname: string; seat: number; team: Team; hand: Card[]; ready: boolean; autoPlay: boolean; connected: boolean; bot: boolean; finishRank?: number; avatarVersion?: string|null; avatarMime?: string|null }
 export interface PublicPlayer extends Omit<Player,'hand'> {remainingCards: number|null}
 export interface Tribute { from: number; to: number; given: boolean; returned: boolean; card?: Card; returnCard?: Card }
@@ -23,7 +23,7 @@ export interface GameState {
  roomId: string; hostId: string; mode: RoomMode; players: Player[]; rules: RuleConfig; status: 'waiting'|'tribute'|'playing'|'settlement'|'finished';
  round: number; currentLevel: Rank; teamLevels: Record<Team,Rank>; currentTurnSeat: number;
  lastPlay: Combination|null; lastPlaySeat: number|null; passSeats: number[]; finishOrder: number[];
- tribute: Tribute[]; tributeResisted: boolean; settlement: Settlement|null; deadline: number|null;
+ tribute: Tribute[]; tributeResisted: boolean; resistedSeats: number[]; settlement: Settlement|null; deadline: number|null;
  revision: number; messages: string[]; aceFailures: Record<Team,number>; totalPlays: number; biggestBomb: number; roundBomb: number; playedCounts: Record<string,number>; matchStats: MatchStats; createdAt: number;
 }
 export interface RoomView extends Omit<GameState,'players'> {players: PublicPlayer[]; mySeat: number; hand: Card[]}

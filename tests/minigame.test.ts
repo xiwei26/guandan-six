@@ -280,7 +280,7 @@ test('side seats move one avatar toward wide screen edges, the lower pair one av
   assert.ok(phone>23);assert.equal(tableEdge(960,540),0);
   const wide=seatSpots(phone),narrow=seatSpots(0);
   assert.equal(wide[4].cx,64-42);assert.equal(wide[2].cx,896+42);
-  assert.ok(narrow[4].cx-SIDE_SEAT_HALF>=8,'16:9 screens keep the side seat block on the canvas');
+  assert.ok(narrow[4].cx-SIDE_SEAT_HALF>=4,'16:9 screens keep the side seat block on the canvas');
   assert.equal(wide[5].y-wide[4].y,128);assert.equal(wide[1].y,wide[5].y);
 });
 
@@ -292,6 +292,8 @@ test('other players played combinations expose every card header',async()=>{
   applyAction(h.state,'p2',{type:'play',cardIds:cards.map(card=>card.id)});h.publish();
   const headers=h.texts().filter(text=>(text.s==='6'||text.s==='7')&&text.y>130&&text.y<240).sort((a,b)=>a.x-b.x);
   assert.equal(headers.length,5);assert.ok(headers.slice(1).every((header,index)=>header.x-headers[index].x>=44),'played cards must leave every card face readable');
+  const tag=h.texts().find(text=>text.s==='三带二')!;
+  assert.ok(tag.x<headers[0].x,'a right-side play carries its pattern tag beside the row, away from the avatar');
   h.events.Hide();
 });
 
@@ -307,8 +309,8 @@ test('top player sits under the round label and plays just right of its name',as
   assert.ok(Math.abs(round.x+width('第 1 ',16)+8-TOP_SEAT_CX)<1,'"局" sits above the top avatar');
   const name=h.texts().find(text=>text.s==='玩家4')!,headers=h.texts().filter(text=>(text.s==='6'||text.s==='7')&&text.y<130);
   assert.equal(headers.length,5);
-  assert.ok(headers.every(header=>header.x>name.x+width('玩家4',13)),'cards start right of the name');
-  assert.ok(headers.every(header=>header.y-12>=36),'cards stay below the header row');
+  assert.ok(headers.every(header=>header.x>name.x+width('玩家4',17)),'cards start right of the name');
+  assert.ok(headers.every(header=>header.y-20>=36),'cards stay below the header row');
   h.events.Hide();
 });
 
@@ -441,4 +443,47 @@ test('opponent card counts appear only at ten cards or fewer',async()=>{
 test('table colour choice applies immediately and is remembered',async()=>{
   const h=harness(true);h.click('深蓝');assert.equal(h.storage.get('gd6.ui.theme'),'blue');
   h.click('藏青');assert.equal(h.storage.get('gd6.ui.theme'),'navy');h.events.Hide();
+});
+
+test('turn buttons can be dragged to a remembered spot and still act on a plain tap',async()=>{
+  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
+  for(const player of h.state.players)applyAction(h.state,player.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});
+  h.state.currentTurnSeat=1;h.state.deadline=Date.now()+20_000;h.publish();
+  const hints=()=>h.requests.filter(request=>request.url.endsWith('/hints')).length;
+  const before=h.texts().find(text=>text.s==='提示')!;
+  h.events.TouchStart({touches:[{clientX:before.x,clientY:before.y}]});
+  h.events.TouchMove({touches:[{clientX:before.x+60,clientY:before.y+100}]});h.events.TouchEnd();await h.flush();
+  const after=h.texts().find(text=>text.s==='提示')!;
+  assert.ok(Math.abs(after.x-before.x-60)<1&&Math.abs(after.y-before.y-100)<1,'the whole row follows the drag');
+  assert.ok(h.storage.get('gd6.ui.turnButtons'),'the dragged position is remembered');
+  assert.equal(hints(),0,'dragging does not press the button');
+  h.click('提示');await h.flush();
+  assert.equal(hints(),1,'a plain tap still asks for a hint');
+  h.events.Hide();
+});
+
+test('another player\'s turn shows a countdown clock at their play spot until they act',async()=>{
+  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
+  for(const player of h.state.players)applyAction(h.state,player.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});
+  h.state.currentTurnSeat=2;h.state.deadline=Date.now()+15_000;h.publish();
+  const clock=()=>h.texts().find(text=>/^(14|15)$/.test(text.s));
+  const lowerRight=seatSpots(0)[1];
+  assert.ok(clock()&&clock()!.x<lowerRight.cx&&clock()!.x>lowerRight.cx-110,'the clock sits on the play side of the seat');
+  const card=h.state.players[1].hand[0];applyAction(h.state,'p2',{type:'play',cardIds:[card.id]});h.state.deadline=Date.now()+15_000;h.publish();
+  const upperRight=seatSpots(0)[2];
+  assert.ok(clock()&&Math.abs(clock()!.y-(upperRight.y+upperRight.size/2))<3,'after playing, the clock moves to the next player');
+  h.events.Hide();
+});
+
+test('tribute and return cards are shown beside the avatars and a resisted tribute is marked 抗',async()=>{
+  const h=harness(true);h.click('电脑局 · 1–6 位真人');await h.flush();
+  for(const player of h.state.players)applyAction(h.state,player.userId,{type:'ready',ready:true});applyAction(h.state,'p1',{type:'start'});
+  const deck=createDeck(),king=deck.find(card=>card.rank==='K'&&card.suit==='spade')!,three=deck.find(card=>card.rank==='3'&&card.suit==='club')!;
+  h.state.tribute=[{from:2,to:1,given:true,returned:true,card:king,returnCard:three}];h.publish();
+  assert.ok(h.texts().some(text=>text.s==='K'&&text.y>HAND_BOTTOM),'the viewer\'s received tribute sits in their chip');
+  const lowerRight=seatSpots(0)[1];
+  assert.ok(h.texts().some(text=>text.s==='3'&&text.y<lowerRight.y+lowerRight.size&&text.x>lowerRight.cx),'the donor\'s return card sits at the avatar corner away from its plays');
+  h.state.tribute=[];h.state.tributeResisted=true;h.state.resistedSeats=[2];h.publish();
+  assert.ok(h.texts().some(text=>text.s==='抗'),'the resisting player is marked');
+  h.events.Hide();
 });

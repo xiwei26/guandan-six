@@ -168,11 +168,31 @@ export class Painter {
     this.rect(x+7,y+7,w-14,h-14,'transparent',12,'#d5d9c866');
   }
 
-  /** Pattern name in the bottom-right corner of an arranged group: half-transparent blue text in a matching frame. */
-  tag(label:string,right:number,bottom:number) {
-    const c=this.ctx,color='#1d5fd0';c.save();c.font='600 12px sans-serif';
-    const w=c.measureText(label).width+10,h=18,x=right-w,y=bottom-h;
-    c.globalAlpha=.5;this.rect(x,y,w,h,'transparent',5,color);this.text(label,x+5,y+h/2+.5,12,color,600);c.restore();
+  tagWidth(label:string) {const c=this.ctx;c.save();c.font='600 12px sans-serif';const w=c.measureText(label).width+10;c.restore();return w;}
+
+  /**
+   * Pattern name: half-transparent blue text in a matching frame, on a card-coloured pill so a suit underneath
+   * cannot show through. `x` is the right edge by default, or the left edge with `align` 'left'.
+   */
+  tag(label:string,x:number,bottom:number,align:'left'|'right'='right') {
+    const c=this.ctx,color='#1d5fd0',w=this.tagWidth(label),h=18,left=align==='left'?x:x-w,y=bottom-h;c.save();
+    this.rect(left,y,w,h,'#fffcf4',5);
+    c.globalAlpha=.5;this.rect(left,y,w,h,'transparent',5,color);this.text(label,left+5,y+h/2+.5,12,color,600);c.restore();
+  }
+
+  /** A small public card beside an avatar, used for tribute and return cards. */
+  miniCard(c:CardFace,x:number,y:number) {
+    const ink=c.red?COLORS.red:COLORS.ink,w=30,h=40,ctx=this.ctx;
+    ctx.save();ctx.shadowColor='#001e2455';ctx.shadowBlur=5;ctx.shadowOffsetY=2;this.rect(x,y,w,h,'#fffcf4',5,'#c5c9bb');ctx.restore();
+    if(c.label==='大'||c.label==='小'){this.jester(x+3,y+2,24,c.label==='大');ctx.save();ctx.fillStyle=ink;ctx.font='600 11px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(c.label+'王',x+w/2,y+h-7);ctx.restore();return;}
+    ctx.save();ctx.fillStyle=ink;ctx.font='600 17px Georgia, serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(c.label,x+w/2,y+12,w-4);ctx.restore();
+    this.suit(c.symbol,x+w/2-7,y+22,14,ink);
+  }
+
+  /** Round "抗" badge marking a player who resisted the tribute. */
+  resistMark(cx:number,cy:number) {
+    const c=this.ctx;c.save();c.beginPath();c.arc(cx,cy,14,0,Math.PI*2);c.fillStyle='#fff8ea';c.fill();c.lineWidth=2;c.strokeStyle=COLORS.red;c.stroke();
+    c.fillStyle=COLORS.red;c.font='700 16px sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText('抗',cx,cy+1);c.restore();
   }
 
   /** Rank index; `fit` squeezes wide labels such as "10" into the visible strip of an overlapped card. */
@@ -183,41 +203,57 @@ export class Painter {
   }
 
   /**
-   * `row` puts rank and suit side by side for vertically stacked cards;
-   * `column` stacks them in the left strip for horizontally fanned cards.
+   * `row` puts the rank top-left of vertically stacked cards (small suit beside it, large suit bottom-left);
+   * other players' played cards also use `row`, with rank top-left and suit bottom-left.
+   * `column` stacks rank and suit in the left strip of horizontally fanned cards.
+   * `scale` enlarges the rank and bottom-left suit (the viewer's hand); `strip` is the visible width of a fanned card.
    */
-  card(c:CardFace,x:number,y:number,w:number,h:number,index?:'row'|'column') {
+  card(c:CardFace,x:number,y:number,w:number,h:number,index?:'row'|'column',scale=1,strip=Infinity) {
     const ink=c.red?COLORS.red:COLORS.ink,joker=c.label==='大'||c.label==='小',big=c.label==='大',ctx=this.ctx;
     const style=index??(w>=48&&w<=64&&h<=64?'row':'column');
     ctx.save();ctx.shadowColor='#001e2440';ctx.shadowBlur=4;ctx.shadowOffsetY=2;
     this.rect(x,y,w,h,c.selected?'#ffedbf':'#fffcf4',6,c.selected?COLORS.gold:'#c5c9bb');ctx.restore();
     if(c.selected)this.rect(x+2,y+2,w-4,h-4,'transparent',4,'#c49a4f');
     const badge=(bx:number,by:number,size:number)=>{this.rect(bx,by,size,size+1,'#ead19b',3);this.text('配',bx+size*.15,by+size*.55,size*.66,'#725320',600);};
-    if(style==='row') {
-      const stacked=h>80,rankSize=stacked?25:17,top=stacked?19:12;
+    if(style==='row'&&h>80) {
+      // Stacked hand card: only the top 46px strip shows unless it is the bottom card of its column.
+      const rankSize=Math.round(25*scale),rankY=y+4+rankSize*.6,pip=Math.round(28*scale);
       if(joker) {
-        this.text(c.label+'王',x+(stacked?6:4),y+top,stacked?16:13,ink,600,'sans-serif');
-        if(stacked){this.jester(x+44,y+3,28,big);this.jester(x+4,y+h-37,31,big);}
-        else this.jester(x+w/2-16,y+h-36,32,big);
+        this.text(c.label+'王',x+6,rankY,Math.round(16*scale),ink,600,'sans-serif');
+        this.jester(x+w-30,y+3,26,big);const art=Math.round(31*scale);this.jester(x+4,y+h-art-1,art,big);
       } else {
-        const rankWidth=this.rank(c.label,x+(stacked?6:4),y+top,c.label==='10'?rankSize-3:rankSize,ink);
-        this.suit(c.symbol,x+(stacked?6:4)+rankWidth+(stacked?3:2),y+(stacked?8:5),stacked?19:14,ink);
-        // Below the next card's edge in a stack, and clear of the pattern tag in the bottom-right corner.
-        if(stacked)this.suit(c.symbol,x+8,y+h-38,28,ink);
+        const rankWidth=this.rank(c.label,x+6,rankY,c.label==='10'?Math.round(22*scale):rankSize,ink);
+        this.suit(c.symbol,x+9+rankWidth,rankY-9.5,19,ink);
+        // Starts below the next card's edge in a stack; the pattern tag covers its right side if they meet.
+        this.suit(c.symbol,x+6,y+h-4-pip,pip,ink);
       }
-      if(c.wild)badge(x+w-(stacked?20:16),y+3,stacked?16:13);
+      if(c.wild)badge(x+w-20,y+3,16);
+      return;
+    }
+    if(style==='row') {
+      // Other players' played cards: rank top-left, suit bottom-left, both 1.6 × the earlier face.
+      if(joker){this.text(c.label+'王',x+3,y+14,20,ink,600,'sans-serif');this.jester(x+3,y+h-33,30,big);}
+      else {
+        this.rank(c.label,x+4,y+20,c.label==='10'?22:27,ink,w-8);
+        this.suit(c.symbol,x+4,y+h-26,22,ink);
+      }
+      if(c.wild)badge(x+w-16,y+3,13);
       return;
     }
     const wide=w>=100,mid=w>=70&&!wide,large=h>80;
-    const rankSize=wide?28:mid?22:large?28:20,suitSize=wide?22:mid?16:large?20:15,left=x+(wide?6:5);
-    const rankY=y+(wide?21:mid?16:large?19:14),suitY=y+(wide?38:mid?29:large?33:26);
+    const baseRank=wide?28:mid?22:large?28:20,baseRankY=wide?21:mid?16:large?19:14,baseSuitY=wide?38:mid?29:large?33:26;
+    const rankSize=Math.round(baseRank*scale),rankY=y+baseRankY*scale,suitSize=wide?22:mid?16:large?20:15,left=x+(wide?6:5);
+    // The suit sits below the (possibly enlarged) rank.
+    const suitY=y+baseSuitY+(baseRankY*scale-baseRankY)+(rankSize-baseRank)*.35;
     if(joker) {
-      const icon=wide?26:mid?24:large?24:20;this.jester(x+(wide?3:2),y+3,icon,big);
-      [...(c.label+'王')].forEach((letter,i)=>this.text(letter,left+(wide?1:0),y+icon+(wide?16:12)+i*(wide?21:mid?16:14),wide?19:mid?15:13,ink,600));
+      const icon=wide?26:mid?24:large?24:20,letter=Math.round((wide?19:mid?15:13)*scale),step=Math.round((wide?21:mid?16:14)*scale);
+      this.jester(x+(wide?3:2),y+3,icon,big);
+      [...(c.label+'王')].forEach((char,i)=>this.text(char,left+(wide?1:0),y+icon+(wide?16:12)*scale+i*step,letter,ink,600));
       if(large){const art=wide?Math.min(w*.56,80):mid?42:w*.5;this.jester(x+w-art-(wide?8:4),y+h-art-(wide?10:4),art,big);}
     } else {
-      // Fanned hands can overlap to about a 30px strip (24px for the viewer's own played cards).
-      this.rank(c.label,x+5,rankY,c.label==='10'?rankSize-3:rankSize,ink,wide?24:mid?30:large?26:19);
+      // Fanned cards overlap: squeeze wide labels such as "10" into the visible strip.
+      const fit=Number.isFinite(strip)?strip-6:scale===1?(wide?24:mid?30:large?26:19):Infinity;
+      this.rank(c.label,x+5,rankY,c.label==='10'?rankSize-Math.round(3*scale):rankSize,ink,fit);
       this.suit(c.symbol,left,suitY,suitSize,ink);
       if(large){const pip=wide?46:mid?30:34;this.suit(c.symbol,x+w-pip-(wide?12:8),y+h-pip-(wide?16:10),pip,ink);}
     }

@@ -49,7 +49,7 @@ export function createRoom(roomId: string, hostId: string, nickname: string, rul
   const state: GameState = {
     roomId, hostId, mode, players: [], rules: validatedRules(rules), status: 'waiting', round: 0,
     currentLevel: '2', teamLevels: { A: '2', B: '2' }, currentTurnSeat: 1,
-    lastPlay: null, lastPlaySeat: null, passSeats: [], finishOrder: [], tribute: [], tributeResisted: false,
+    lastPlay: null, lastPlaySeat: null, passSeats: [], finishOrder: [], tribute: [], tributeResisted: false, resistedSeats: [],
     settlement: null, deadline: null, revision: 0, messages: [], aceFailures: { A: 0, B: 0 }, totalPlays: 0, biggestBomb: 0, roundBomb: 0, playedCounts: {}, matchStats: createMatchStats(), createdAt: Date.now(),
   };
   addPlayer(state, hostId, nickname);
@@ -129,6 +129,8 @@ function makeTribute(state: GameState, order: number[], winner: Team, upgrade: n
     ? kings(playerAt(state,donors[0])) >= state.rules.singleResistanceJokers
     : opposing.reduce((sum,p) => sum + kings(p),0) >= state.rules.teamResistanceJokers);
   if (state.tributeResisted) {
+    // Keep who resisted so the table can mark them; no cards change hands.
+    state.resistedSeats = [...donors];
     state.tribute = [];
     state.currentTurnSeat = order[0];
     state.status = 'playing';
@@ -159,6 +161,7 @@ function startRound(state: GameState, now: number) {
   state.playedCounts = {};
   state.tribute = [];
   state.tributeResisted = false;
+  state.resistedSeats = [];
   state.settlement = null;
   state.status = 'playing';
   state.currentTurnSeat = previous ? previous.order[0] : randomInt(1,7);
